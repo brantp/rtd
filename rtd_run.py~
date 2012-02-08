@@ -26,7 +26,7 @@ see (at the time of this writing, March 09 2011)
 * N.B. numpy is also available as part of the excellent Enthought Python Distribution,
 available free for academic/non-profit use at http://www.enthought.com/products/epd.php
 '''
-#fake comment
+
 from config import RTDROOT as radtag_denovo
 from preprocess_radtag_lane import get_baseQ
 
