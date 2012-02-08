@@ -1,0 +1,25 @@
+pipeline script generates reference-sorted, indexed BAM from uniqued reads from radtag sequencing lanes.
+
+To generate uniqued reads, see preprocess_radtag_lane.py
+
+four accessory programs and three python libraries are used, listed below.
+for parallel execution, GNU parallel is also HIGHLY recommended. 
+Experimental LSF support is also available.
+
+REQUIREMENTS:
+-        PATH must contain: blat mcl mcxload muscle samtools [parallel]
+-  PYTHONPATH must contain: numpy gdata editdist
+
+see (at the time of this writing, March 09 2011)
+  blat         http://hgdownload.cse.ucsc.edu/downloads.html
+  mcl/mcxload  http://www.micans.org/mcl/
+  muscle       http://www.drive5.com/muscle/
+  samtools     http://samtools.sourceforge.net/
+  GNU parallel http://savannah.gnu.org/projects/parallel/
+
+  numpy *      http://sourceforge.net/projects/numpy/files/
+  gdata        http://code.google.com/p/gdata-python-client/downloads/list
+  editdist     http://www.mindrot.org/projects/py-editdist/
+
+* N.B. numpy is also available as part of the excellent Enthought Python Distribution,
+available free for academic/non-profit use at http://www.enthought.com/products/epd.php
