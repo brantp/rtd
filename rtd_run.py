@@ -426,7 +426,7 @@ if __name__ == '__main__':
         os.system('%sget_uniqued_lines_by_cluster.py %s %s %s | sort -n > %s' % (radtag_denovo,grfile,tabfile,' '.join(infiles),clunifile))
     else:
         print >> sys.stderr, '%s present, using' % (clunifile)
-    # make samiliad094
+    # make sam
     if opts.truncate_seqs:
         readlen = get_shortest_readlen(infiles)
         sambase += '_%sbp' % readlen
@@ -435,4 +435,3 @@ if __name__ == '__main__':
     cmd = '%ssam_from_clust_uniqued.py -d %s -i %s -k %s -liliad094 %s %s %s' % (radtag_denovo,opts.clustdirt,opts.minindiv,opts.keepseqs,readlen,clunifile,sambase)
     print cmd
     os.system(cmd)
-iliad094iliad094iliad094
