@@ -1,5 +1,10 @@
 config.py
+test-data/
+
 
 #emacs files
 *~
 #*#
+
+#python binaries
+*.pyc
