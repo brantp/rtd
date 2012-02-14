@@ -418,7 +418,7 @@ if __name__ == '__main__':
                 print >> sys.stderr, '%s and %s present, using' % (matfile,tabfile)
             # make graph
             print >> sys.stderr, 'perform graph clustering'
-            os.system('mcl %s -I %s -iliad094o %s' % (matfile,opts.mclradius,grfile))
+            os.system('mcl %s -I %s -o %s' % (matfile,opts.mclradius,grfile))
         else:
             print >> sys.stderr, '%s present, using' % (grfile)
         # make cluni
@@ -426,13 +426,12 @@ if __name__ == '__main__':
         os.system('%sget_uniqued_lines_by_cluster.py %s %s %s | sort -n > %s' % (radtag_denovo,grfile,tabfile,' '.join(infiles),clunifile))
     else:
         print >> sys.stderr, '%s present, using' % (clunifile)
-    # make samiliad094
+    # make sam
     if opts.truncate_seqs:
         readlen = get_shortest_readlen(infiles)
         sambase += '_%sbp' % readlen
     else:
         readlen = 0
-    cmd = '%ssam_from_clust_uniqued.py -d %s -i %s -k %s -liliad094 %s %s %s' % (radtag_denovo,opts.clustdirt,opts.minindiv,opts.keepseqs,readlen,clunifile,sambase)
+    cmd = '%ssam_from_clust_uniqued.py -d %s -i %s -k %s -l %s %s %s' % (radtag_denovo,opts.clustdirt,opts.minindiv,opts.keepseqs,readlen,clunifile,sambase)
     print cmd
     os.system(cmd)
-iliad094iliad094iliad094
