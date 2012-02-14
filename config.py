@@ -12,5 +12,4 @@ SCRATCH = '/scratch/brantp/'
 # radtag_denovo must be the full path of the folder in which
 # this and its accessory scripts reside
 #RTDROOT = 
-RTDROOT = '/n/home08/brantp/code/radtag_denovo/'
-
+RTDROOT = '/n/home08/brantp/code/git/rtd/'
