@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-import os,sys,numpy,Util,gdata_tools
+import os,sys,numpy,Util
 from collections import defaultdict
+import preprocess_radtag_lane
 
 def get_pool(db,ind,fc,lane,index=None):
 
@@ -10,7 +11,7 @@ def get_pool(db,ind,fc,lane,index=None):
     return hits
 
 def get_pool_lookup(db,fc,lane,index=None):
-    all_ind = [d['sampleid'] for d in db if d['flowcell'] == fc and d['lane'] == lane and (index is None or d['index'] == index)]
+    all_ind = [d['sampleid'] for d in db if d.get('flowcell','') == fc and d['lane'] == lane and (index is None or d['index'] == index)]
     pool_lookup = {}
     for ind in all_ind:
         pool_lookup[ind] = get_pool(db,ind,fc,lane,index)
@@ -54,7 +55,7 @@ def get_uniqued_info(uniqued):
 
 if __name__ == "__main__":
 
-    db = gdata_tools.get_table_as_dict('DB_library_data')
+    db = preprocess_radtag_lane.get_table_as_dict('DB_library_data',suppress_fc_check=True)
     uniqued = sys.argv[1]
 
     ufields = get_uniqued_info(uniqued)

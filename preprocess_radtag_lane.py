@@ -116,7 +116,7 @@ def get_spreadsheet_key(target_sheet,gd_client=None):
 
     return key,gd_client
 
-def get_table_as_dict(target_sheet,sq=None,gd_client=None):
+def get_table_as_dict(target_sheet,sq=None,gd_client=None,suppress_fc_check=False):
 
     key,gd_client = get_spreadsheet_key(target_sheet,gd_client)
     if sq is not None:
@@ -126,7 +126,18 @@ def get_table_as_dict(target_sheet,sq=None,gd_client=None):
     else:
         feed = gd_client.GetListFeed(key)
 
-    recs = [dict([[st.strip() for st in el.split(':')] for el in entry.content.text.split(',')]) for entry in feed.entry]
+    recs = []
+    for entry in feed.entry:
+        #d = []
+	#for el in entry.content.text.split(','):
+	    
+        try:
+	    recs.append(dict(re.findall('(.+?):\s(.+?)(?:(?:,\s)|$)',entry.content.text)))
+	    if not suppress_fc_check and not all([k in recs[-1].keys() for k in ['flowcell','lane','pool']]):
+	        print >> sys.stderr, 'missing keys:', dict(re.findall('(.+?):\s(.+?)(?:(?:,\s)|$)',entry.content.text))
+	        print >> sys.stderr, 'line was:\n',entry.content.text
+	except:
+	    print >> sys.stderr, 'invalid:', entry.content.text#.split(',')
 
     return recs
 
@@ -614,6 +625,6 @@ if __name__ == '__main__':
         print >> sys.stderr, 'output written to',outfile
 
         print >> sys.stderr, 'generate preprocess summary (summarize_sequencing_stats.py)'
-        os.system('summarize_sequencing_stats.py %s > %s.stats' % (outfile,outfile))
+        os.system(os.path.join(RTDROOT,'summarize_sequencing_stats.py %s > %s.stats' % (outfile,outfile)))
     
     #done
