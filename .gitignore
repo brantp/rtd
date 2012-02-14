@@ -1,1 +1,5 @@
 ./config.py
+
+#emacs files
+*~
+#*#
