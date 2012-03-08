@@ -475,6 +475,11 @@ if __name__ == '__main__':
     parser.add_argument('-oq','--base_Q_out',default=33,type=int,help='integer offset for quality scores IN OUTPUT.  Usually 33 for "sanger" style (newer illumina runs, input for BWA) or 64 for illumina/solexa (older illumina). value None will output according to input'+ds)
     parser.add_argument('-ol','--output_lnum',default='4',choices=['1','4'],type=int,help='number of lines per record in fastq output if -w is specified (either older 1-line, or newer 4-line)'+ds)
 
+    parser.add_argument('-e','--estimate_error',action='store_true',help='invokes clustering to estimate error rate after completion of preprocessing'+ds)
+    parser.add_argument('-ec','--est_err_cores',default=1,type=int,help='parallelize error estimate run over this number of cores (serial if less than 2) REQUIRES GNU PARALLEL'+ds)
+    parser.add_argument('-ep','--est_err_parts',default=4,type=int,help='number of query files to split error estimate simliarity calculation into (see rtd_run -np argument)'+ds)
+    parser.add_argument('-er','--est_err_radius',default=2,type=int,help='MCL radius argument (-I) for error estimate clustering'+ds)
+
     parser.add_argument('infiles',nargs='+',help='either 1 or 2 fastq files corresponding to reads from a single lane, and optionally read 2 sequences for that lane')
 
     opts = parser.parse_args()
@@ -626,5 +631,13 @@ if __name__ == '__main__':
 
         print >> sys.stderr, 'generate preprocess summary (summarize_sequencing_stats.py)'
         os.system(os.path.join(RTDROOT,'summarize_sequencing_stats.py %s > %s.stats' % (outfile,outfile)))
+
+        if opts.estimate_error:
+            err_clust_root = outfile + '-rtd'
+            if opts.est_err_cores > 1:
+                os.system(os.path.join(RTDROOT,'rtd_run.py --cleanup -pe parallel -np %s -nc %s -I %s -te %s -s %s -cs %s %s' % (opts.est_err_parts, opts.est_err_cores, opts.est_err_radius, opts.est_err_cores, opts.cutsite, err_clust_root, outfile)))
+            else:
+                os.system(os.path.join(RTDROOT,'rtd_run.py --cleanup -pe local -np %s -nc 1 -I %s -s %s -cs %s %s' % (opts.est_err_parts, opts.est_err_radius, opts.cutsite, err_clust_root, outfile)))
+                         
     
     #done

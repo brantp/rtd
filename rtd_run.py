@@ -286,7 +286,26 @@ def run_match(match_engine,parallel_engine,ncores,subject,queries,minlen,other_a
             return run_lsf_blat(subject,queries,minlen,other_argstr,ncores)
         elif parallel_engine == 'parallel':
             return run_parallel_blat(subject,queries,minlen,other_argstr,ncores)
-    
+
+def readlen_from_uniqued(uniqued):
+    return len(open(uniqued).readline().strip().split()[0])
+
+def get_uniqued_error(infiles,cdest_searchbase):
+    from glob import glob
+    print >> sys.stderr, '\nset cluster dirt threshold from per-lane error estimates'
+    err_by_uni = {}
+    for uniqued in infiles:
+        rl = readlen_from_uniqued(uniqued)
+        cdest_search = uniqued+'-rtd/'+cdest_searchbase
+        cdests = glob(cdest_search)
+        if len(cdests) != 1:
+            raise ValueError, 'search string %s did not result in a single .cdest file %s' % (cdest_search,cdests)
+        else:
+            cd = float(open(cdests[0]).read())
+        print >> sys.stderr, '%s: found cluster dirt %s for read length %s. Estimated error: %s' % (uniqued,cd,rl,cd/rl)
+        err_by_uni[uniqued] = cd/rl
+    return err_by_uni
+
     
 if __name__ == '__main__':
 
@@ -304,14 +323,18 @@ if __name__ == '__main__':
     parser.add_argument('-nc','--ncores',default=4,type=int,help='number of cores to run distance matrix sub-parts on'+ds)
      
     parser.add_argument('-I','--mclradius',default=2,type=float,help='radius term for mcl clustering (given as -I term to mcl; see mcl documention)'+ds)
+    parser.add_argument('-te','--mclthreads',default=1,type=float,help='expansion threads term for mcl clustering (given as -te term to mcl for values > 1; see mcl documention)'+ds)
 
     parser.add_argument('-c','--set_mincycles',default=0,type=int,help='arbitrarily truncate reads at set length, rather than shortest read in infiles'+ds)
     parser.add_argument('-ts','--truncate_seqs',action='store_true',help='only output final sequences to the length of cluster seed (as set by --set_mincycles or automatically determined from input data)'+ds)
     parser.add_argument('-s','--cutsite',default='AATTC',help='sequence left behind by restriction enzyme at read1 end of library NOT NECESSARILY FULL R.E. SITE'+ds)
     
-    parser.add_argument('-cd','--clustdirt',default='0.05',help='fraction of invalid reads in a putatively orthologous sequence set to permit before removing sequence set. See sam_from_clust_uniqued.py'+ds)
+    parser.add_argument('-cd','--clustdirt',default='0.05',help='threshold fraction of invalid reads in a putatively orthologous sequence set to permit before removing sequence set. See sam_from_clust_uniqued.py. Set to "None" to invoke dirt estimation from individual preprocess runs'+ds)
     parser.add_argument('-mi','--minindiv',default='100',help='minimum number of individuals that must be represented in a putatively orthologous sequence set to include in SAM. See sam_from_clust_uniqued.py'+ds)
     parser.add_argument('-ks','--keepseqs',default='200',help='maximum number of unique sequences from a cluster to align for SAM. See sam_from_clust_uniqued.py'+ds)
+    parser.add_argument('-cs','--cluster_stats_only',action='store_true',help='calculate cluster statistics at supplied thresholds; do not generate alignments'+ds)
+
+    parser.add_argument('--cleanup',action='store_true',help='remove intermediate files as each step completes'+ds)
     
     parser.add_argument('outroot',help='folder to which intermediate files and output will be written')
     parser.add_argument('infiles',nargs='+',help='any number of .uni "uniqued" files created by preprocess_radtag_lane.py')
@@ -375,12 +398,27 @@ if __name__ == '__main__':
     
     grfile = outprefix + '.gr'
 
+    cdest_searchbase = os.path.basename(outprefix) + '*.clstats.cdest'
+
     clunifile = outprefix + '.cluni'
     sambase = outprefix + '_%sdirt_%sindiv_%sseq' % (opts.clustdirt,opts.minindiv,opts.keepseqs)
 
     
     #
     ############
+
+
+    if opts.clustdirt == 'None':
+        err_by_uni = get_uniqued_error(infiles,cdest_searchbase)
+        mean_err = numpy.mean(err_by_uni.values())
+        if set_mincycles:
+            set_dirt = mean_err * int(set_mincycles)
+            print >> sys.stderr, 'dirt set to mean of error (%s) * specified min_cycles (%s) = %s' % (mean_err, int(set_mincycles), set_dirt)
+            opts.clustdirt = set_dirt
+        else:
+            set_dirt = mean_err * get_shortest_readlen(infiles)
+            print >> sys.stderr, 'dirt set to mean of error (%s) * shortest read length (%s) = %s' % (mean_err, get_shortest_readlen(infiles), set_dirt)
+            opts.clustdirt = set_dirt
 
 
     ############
@@ -417,8 +455,12 @@ if __name__ == '__main__':
             else:
                 print >> sys.stderr, '%s and %s present, using' % (matfile,tabfile)
             # make graph
-            print >> sys.stderr, 'perform graph clustering'
-            os.system('mcl %s -I %s -o %s' % (matfile,opts.mclradius,grfile))
+            if opts.mclthreads > 1:
+                print >> sys.stderr, 'perform multithreaded (%s) graph clustering' % opts.mclthreads
+                os.system('mcl %s -I %s -te %s -o %s' % (matfile,opts.mclradius,opts.mclthreads,grfile))
+            else:
+                print >> sys.stderr, 'perform graph clustering'
+                os.system('mcl %s -I %s -o %s' % (matfile,opts.mclradius,grfile))
         else:
             print >> sys.stderr, '%s present, using' % (grfile)
         # make cluni
@@ -426,12 +468,43 @@ if __name__ == '__main__':
         os.system('%sget_uniqued_lines_by_cluster.py %s %s %s | sort -n > %s' % (radtag_denovo,grfile,tabfile,' '.join(infiles),clunifile))
     else:
         print >> sys.stderr, '%s present, using' % (clunifile)
+
+    #cleanup if invoked
+    if opts.cleanup:
+        print >> sys.stderr, 'file cleanup invoked; remove:'
+        print >> sys.stderr, '\tsimilarity calculation subject',subject
+        if os.path.exists(subject): os.unlink(subject)
+        print >> sys.stderr, '\tsimilarity calculation mID',mIDfile
+        if os.path.exists(mIDfile): os.unlink(mIDfile)
+        print >> sys.stderr, '\tsimilarity calculation queries [%s files]' % len(queries)
+        for query in queries:
+            if os.path.exists(query): os.unlink(query)
+        try:
+            print >> sys.stderr, '\tMCL input label file parts [%s files]' % len(labf)
+            for lf in labf:
+                if os.path.exists(lf): os.unlink(lf)
+        except:
+            print >> sys.stderr, '\tMCL input label file parts not defined; skip'
+        print >> sys.stderr, '\tMCL input label file',labelfile
+        if os.path.exists(labelfile): os.unlink(labelfile)
+        print >> sys.stderr, '\tMCL input matrix file',matfile
+        if os.path.exists(matfile): os.unlink(matfile)
+        print >> sys.stderr, '\tMCL input table file',tabfile
+        if os.path.exists(tabfile): os.unlink(tabfile)
+        print >> sys.stderr, '\tMCL result graph file',grfile
+        if os.path.exists(grfile): os.unlink(grfile)
+        print >> sys.stderr, 'done'
+        
+    
     # make sam
     if opts.truncate_seqs:
         readlen = get_shortest_readlen(infiles)
         sambase += '_%sbp' % readlen
     else:
         readlen = 0
-    cmd = '%ssam_from_clust_uniqued.py -d %s -i %s -k %s -l %s %s %s' % (radtag_denovo,opts.clustdirt,opts.minindiv,opts.keepseqs,readlen,clunifile,sambase)
+    if opts.cluster_stats_only:
+        cmd = '%ssam_from_clust_uniqued.py -d %s -i %s -k %s -l %s -cs %s %s' % (radtag_denovo,opts.clustdirt,opts.minindiv,opts.keepseqs,readlen,clunifile,sambase)
+    else:
+        cmd = '%ssam_from_clust_uniqued.py -d %s -i %s -k %s -l %s %s %s' % (radtag_denovo,opts.clustdirt,opts.minindiv,opts.keepseqs,readlen,clunifile,sambase)
     print cmd
     os.system(cmd)

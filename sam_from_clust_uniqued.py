@@ -10,6 +10,7 @@ import os, sys, re
 import musclemap
 
 from collections import defaultdict
+from config import RTDROOT
 
 def samline_from_alnpair(rname,raln,qname,qaln,qqual):
     if set(qqual) == set(['#']):
@@ -230,6 +231,8 @@ if __name__ == '__main__':
     parser.add_argument('-i','--min_indiv',default=20,type=int,help='minimum number of individuals with at least one sequence in a cluster to include cluster'+ds)
     parser.add_argument('-k','--keep_seqs',default=100,type=int,help='only retain this many sequences for processing'+ds)
     parser.add_argument('-l','--seq_len',default=0,type=int,help='arbitrarily truncate sequences in SAM/BAM output at this length if not 0'+ds)
+
+    parser.add_argument('-cs','--calc_only',action='store_true',help='calculate cluster statistics at supplied thresholds; do not generate alignments'+ds)
     
     parser.add_argument('cluniq',help='sorted .cluniq file containing cluster-associated unique sequences')
     parser.add_argument('fbase',help='basename for output files')
@@ -251,9 +254,10 @@ if __name__ == '__main__':
         pass
 
     fh = open(cluniq)
-    samheader_fh = open(fbase+'.sam.header','w')
-    sambody_fh = open(fbase+'.sam.body','w')
-    ref_fh = open(fbase+'.fa','w')
+    if not opts.calc_only:
+        samheader_fh = open(fbase+'.sam.header','w')
+        sambody_fh = open(fbase+'.sam.body','w')
+        ref_fh = open(fbase+'.fa','w')
     clstats_fh = open(fbase+'.clstats','w')
 
     rg_dict = {}
@@ -269,7 +273,7 @@ if __name__ == '__main__':
                 cl_indiv = len(indiv_in_clust(cl_lines))
                 clstats_fh.write('%s\t%s\t%s\t%s\n' % (this_cl,len(cl_lines),cl_indiv,cl_dirt))
                 if cl_on % 100 == 0: print >> sys.stderr, '%s\tcluster: %s\tunique seqs: %s\tindiv: %s\tdirt: %s' % (cl_on,this_cl,len(cl_lines),cl_indiv,cl_dirt)
-                if cl_dirt < clust_dirt_max and cl_indiv >= min_indiv: 
+                if not opts.calc_only and cl_dirt < clust_dirt_max and cl_indiv >= min_indiv: 
                     cl_aln = aln_from_clust(this_cl,cl_lines,keep_seqs,seq_len)
                     write_sam_from_aln(this_cl,cl_aln,rg_dict,samheader_fh,sambody_fh,ref_fh)
 
@@ -279,46 +283,42 @@ if __name__ == '__main__':
         cl_lines.append(l)
 
     clstats_fh.write('%s\t%s\t%s\t%s\n' % (this_cl,len(cl_lines),cl_indiv,cl_dirt))
-    cl_aln = aln_from_clust(this_cl,cl_lines,keep_seqs)
-    if calc_cluster_dirt(cl_lines) < clust_dirt_max and len(indiv_in_clust(cl_lines)) >= min_indiv:
-        write_sam_from_aln(this_cl,cl_aln,rg_dict,samheader_fh,sambody_fh,ref_fh)
+    if not opts.calc_only:
+        cl_aln = aln_from_clust(this_cl,cl_lines,keep_seqs)
+        if calc_cluster_dirt(cl_lines) < clust_dirt_max and len(indiv_in_clust(cl_lines)) >= min_indiv:
+            write_sam_from_aln(this_cl,cl_aln,rg_dict,samheader_fh,sambody_fh,ref_fh)
 
-
-
-    #DO: RG stat
+    clstats_fh.close()
+    os.system(os.path.join(RTDROOT,'plot_error.py %s > %s' % (fbase+'.clstats',fbase+'.clstats.cdest' )))
     
-
     #finish headers (@RG lines)
-    if len(rg_dict) == 0:
-        print >> sys.stderr, 'readgroup dict is empty; no individuals included in final dataset. Check number of individuals and cluster dirt cutoffs and re-run'
-        print >> sys.stderr, 'close output files ...',
+    if not opts.calc_only:
+        if len(rg_dict) == 0:
+            print >> sys.stderr, 'readgroup dict is empty; no individuals included in final dataset. Check number of individuals and cluster dirt cutoffs and re-run'
+            print >> sys.stderr, 'close output files ...',
+            samheader_fh.close()
+            sambody_fh.close()
+            ref_fh.close()
+            print >> sys.stderr, 'done.\nremove output files ...',
+            os.unlink(samheader_fh.name)
+            os.unlink(sambody_fh.name)
+            os.unlink(ref_fh.name)
+            print >> sys.stderr, 'done'    
+            sys.exit(1)
+
+
+        for rg in rg_dict:
+            headline = '@RG\tID:%s\tPL:Illumina\tLB:%s\tSM:%s\n' % (rg,rg_dict[rg],rg_dict[rg])
+            samheader_fh.write(headline)
+
         samheader_fh.close()
         sambody_fh.close()
         ref_fh.close()
-        clstats_fh.close()
-        print >> sys.stderr, 'done.\nremove output files ...',
+
+        print >> sys.stderr, 'index reference'
+        os.system('samtools faidx %s.fa' % (fbase))
+        print >> sys.stderr, 'add headers and sort'
+        os.system('cat %s.sam.header %s.sam.body | samtools view -bS - | samtools sort - %s' % (fbase,fbase,fbase))
+        print >> sys.stderr, 'index bam'
+        os.system('samtools index %s.bam' % (fbase))
         print >> sys.stderr, 'done'
-        os.unlink(samheader_fh.name)
-        os.unlink(sambody_fh.name)
-        os.unlink(ref_fh.name)
-        
-        sys.exit(1)
-        
-        
-    for rg in rg_dict:
-        headline = '@RG\tID:%s\tPL:Illumina\tLB:%s\tSM:%s\n' % (rg,rg_dict[rg],rg_dict[rg])
-        samheader_fh.write(headline)
-
-    samheader_fh.close()
-    sambody_fh.close()
-    ref_fh.close()
-    clstats_fh.close()
-    
-    print >> sys.stderr, 'index reference'
-    os.system('samtools faidx %s.fa' % (fbase))
-    print >> sys.stderr, 'add headers and sort'
-    os.system('cat %s.sam.header %s.sam.body | samtools view -bS - | samtools sort - %s' % (fbase,fbase,fbase))
-    print >> sys.stderr, 'index bam'
-    os.system('samtools index %s.bam' % (fbase))
-    print >> sys.stderr, 'done'
-
