@@ -156,25 +156,36 @@ def get_adapter_index_lookup(verbose=True):
         print >> sys.stderr, 'loaded adapter lookup from %s lines in %s' % (len(d),ADAPTER_DATA) 
     return idxlookup
 
-def get_individual_data_for_lane(filename,idxlookup=None):
+def get_individual_data_for_lane(filename=None,idxlookup=None,fc=None,lane=None,index=None):
     '''given a fastq file, treats the directory immediately above as the flowcell ID, returns dict:
     { <sequence_index_tag> : **ROW_FROM_LIBRARY_DATA } 
     '''
     if idxlookup is None:
         idxlookup = get_adapter_index_lookup()
-        
-    fc = os.path.basename(os.path.dirname(filename))
-    lane = os.path.basename(filename)[2]
-    #print >> sys.stderr, fc,lane,idxlookup
-    fbase = os.path.basename(filename)
 
-    key,gd_client = get_spreadsheet_key(LIBRARY_DATA)
+    if fc is None and lane is None:
+        fc = os.path.basename(os.path.dirname(filename))
+        lane = os.path.basename(filename)[2]
+        #print >> sys.stderr, fc,lane,idxlookup
+        fbase = os.path.basename(filename)
 
-    q = gdata.spreadsheet.service.ListQuery()
-    if 'index' in fbase:
-	    q.sq = 'flowcell="%s" and lane="%s" and index="%s"' % (fc,lane,fbase.split('index')[-1].split('.')[0])
+        key,gd_client = get_spreadsheet_key(LIBRARY_DATA)
+
+        q = gdata.spreadsheet.service.ListQuery()
+        if 'index' in fbase:
+    	    q.sq = 'flowcell="%s" and lane="%s" and index="%s"' % (fc,lane,fbase.split('index')[-1].split('.')[0])
+        else:
+    	    q.sq = 'flowcell="%s" and lane="%s"' % (fc,lane)
     else:
-	    q.sq = 'flowcell="%s" and lane="%s"' % (fc,lane)
+        key,gd_client = get_spreadsheet_key(LIBRARY_DATA)
+
+        q = gdata.spreadsheet.service.ListQuery()
+        if index is not None:
+            q.sq = 'flowcell="%s" and lane="%s" and index="%s"' % (fc,lane,index)
+        else:
+            q.sq = 'flowcell="%s" and lane="%s"' % (fc,lane)
+
+
 
     feed = gd_client.GetListFeed(key,query=q)
     recs = [dict([[st.strip() for st in el.split(':')] for el in entry.content.text.split(',')]) for entry in feed.entry]
@@ -474,6 +485,9 @@ if __name__ == '__main__':
     parser.add_argument('-iq','--base_Q_in',default=None,type=int,help='integer offset for quality scores IN INPUT.  Usually 33 for "sanger" style (newer illumina runs, input for BWA) or 64 for illumina/solexa (older illumina). If None, ascertain from data'+ds)
     parser.add_argument('-oq','--base_Q_out',default=33,type=int,help='integer offset for quality scores IN OUTPUT.  Usually 33 for "sanger" style (newer illumina runs, input for BWA) or 64 for illumina/solexa (older illumina). value None will output according to input'+ds)
     parser.add_argument('-ol','--output_lnum',default='4',choices=['1','4'],type=int,help='number of lines per record in fastq output if -w is specified (either older 1-line, or newer 4-line)'+ds)
+    parser.add_argument('-fc','--flowcell',default=None,type=str,help='flowcell name (if None, derive from sequence infile path)'+ds)
+    parser.add_argument('-l','--lane',default=None,type=str,help='lane (if None, derive from sequence infile name)'+ds)
+    parser.add_argument('-idx','--index',default=None,type=str,help='multiplex index (if None, derive from sequence infile name)'+ds)
 
     parser.add_argument('-e','--estimate_error',action='store_true',help='invokes clustering to estimate error rate after completion of preprocessing'+ds)
     parser.add_argument('-ec','--est_err_cores',default=1,type=int,help='parallelize error estimate run over this number of cores (serial if less than 2) REQUIRES GNU PARALLEL'+ds)
@@ -526,14 +540,26 @@ if __name__ == '__main__':
 
     idxlookup = get_adapter_index_lookup()
     indivs = []
-        
-    fc = os.path.basename(os.path.dirname(r1))
-    lane = os.path.basename(r1)[2]
+
+    if opts.flowcell is None:        
+        fc = os.path.basename(os.path.dirname(r1))
+    else:
+        fc = opts.flowcell
+
+    if opts.lane is None:
+        lane = os.path.basename(r1)[2]
+    else:
+        lane = opts.lane
+
     nreads = get_read_count(r1,lnum)
 
     #index info append
-    if 'index' in os.path.basename(r1):
-	    idxstr = '_index%s' % os.path.basename(r1).split('index')[-1].split('.')[0]
+    if opts.index is not None:
+        index = opts.index
+        idxstr = '_index%s' % index
+    elif 'index' in os.path.basename(r1):
+        index = os.path.basename(r1).split('index')[-1].split('.')[0]
+        idxstr = '_index%s' % index
     else:
 	    idxstr = ''
     
@@ -542,7 +568,7 @@ if __name__ == '__main__':
         if nreads != nreads2:
             raise ValueError, '%s read count: %s; %s read count: %s' % (r1, nreads, r2, nreads2)
 
-    indiv_data = get_individual_data_for_lane(r1,idxlookup)
+    indiv_data = get_individual_data_for_lane(idxlookup=idxlookup,fc=fc,lane=lane,index=index)
 
     adaptersversions = set([r['adaptersversion'] for r in indiv_data.values()])
     idxs = reduce(lambda x,y: x+y, [idxlookup[adver].values() for adver in adaptersversions])    
@@ -553,8 +579,8 @@ if __name__ == '__main__':
 
 
     if write_reads_by_indiv:
-	outroot = os.path.dirname(r1)	    
-        indiv_reads_out_base = os.path.join(outroot,'reads_by_individual/%s_lane%s/' % (fc,lane))
+	outroot = os.path.dirname(r1)
+        indiv_reads_out_base = os.path.join(outroot,'reads_by_individual/%s_lane%s%s/' % (fc,lane,idxstr))
         try:
             os.makedirs(indiv_reads_out_base)
 	    os.system('chmod g+w '+indiv_reads_out_base.rstrip('/'))
@@ -635,9 +661,17 @@ if __name__ == '__main__':
         if opts.estimate_error:
             err_clust_root = outfile + '-rtd'
             if opts.est_err_cores > 1:
-                os.system(os.path.join(RTDROOT,'rtd_run.py --cleanup -pe parallel -np %s -nc %s -I %s -te %s -s %s -cs %s %s' % (opts.est_err_parts, opts.est_err_cores, opts.est_err_radius, opts.est_err_cores, opts.cutsite, err_clust_root, outfile)))
+                cmd = os.path.join(RTDROOT,'rtd_run.py --cleanup -pe parallel -np %s -nc %s -I %s -te %s -s %s -cs %s %s' % (opts.est_err_parts, opts.est_err_cores, opts.est_err_radius, opts.est_err_cores, opts.cutsite, err_clust_root, outfile))
+                print >> sys.stderr, cmd
+                os.system(cmd)
             else:
-                os.system(os.path.join(RTDROOT,'rtd_run.py --cleanup -pe local -np %s -nc 1 -I %s -s %s -cs %s %s' % (opts.est_err_parts, opts.est_err_radius, opts.cutsite, err_clust_root, outfile)))
-                         
+                print >> sys.stderr, cmd
+                cmd = os.path.join(RTDROOT,'rtd_run.py --cleanup -pe local -np %s -nc 1 -I %s -s %s -cs %s %s' % (opts.est_err_parts, opts.est_err_radius, opts.cutsite, err_clust_root, outfile))
+                os.system(cmd)
+            cdest_file = glob(os.path.join(err_clust_root,'*I%s*.clstats.cdest' % opts.est_err_radius))[0]
+            cdest = float(open(cdest_file).read())
+            errest = cdest/readlen
+            print >> sys.stderr, 'sequencing error estimates: cluster dirt %0.4f, per-base error: %0.4f' % (cdest,errest)
+            open(os.path.splitext(cdest_file)[0]+'.errest','w').write(errest.__repr__()) 
     
     #done
