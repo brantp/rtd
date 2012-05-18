@@ -413,8 +413,11 @@ def next_read_from_fh(fh,lnum=None):
         rl = [fh.readline().strip() for i in range(lnum)]
         return [ rl[0][1:], rl[1], rl[3] ]
 
-def as_fq4_lines(id,s,q,baseQ):
-    return '\n'.join(['@'+id] + [s,'+',(''.join([chr(n+baseQ) for n in q]))+'\n'])
+def as_fq4_lines(id,s,q,baseQ=None):
+    if baseQ is None:
+        return '\n'.join(['@'+id] + [s,'+',q+'\n'])
+    else:
+        return '\n'.join(['@'+id] + [s,'+',(''.join([chr(n+baseQ) for n in q]))+'\n'])
 
 def as_fq1_line(id,s,q,baseQ):
     return ':'.join([id] + [s,(''.join([chr(n+baseQ) for n in q]))+'\n'])
@@ -665,8 +668,8 @@ if __name__ == '__main__':
                 print >> sys.stderr, cmd
                 os.system(cmd)
             else:
-                print >> sys.stderr, cmd
                 cmd = os.path.join(RTDROOT,'rtd_run.py --cleanup -pe local -np %s -nc 1 -I %s -s %s -cs %s %s' % (opts.est_err_parts, opts.est_err_radius, opts.cutsite, err_clust_root, outfile))
+                print >> sys.stderr, cmd
                 os.system(cmd)
             cdest_file = glob(os.path.join(err_clust_root,'*I%s*.clstats.cdest' % opts.est_err_radius))[0]
             cdest = float(open(cdest_file).read())
