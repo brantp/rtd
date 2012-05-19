@@ -5,10 +5,10 @@ SOURCE = 'RADbase'   # docuument source (leave as-is)
 LIBRARY_DATA = 'DB_library_data'
 ADAPTER_DATA = 'DB_index_by_well'
 
-# scratch must be set to a folder to which you have write permission:
+# SCRATCH must be set to a folder to which you have write permission:
 SCRATCH = ""
 
-# radtag_denovo must be the full path of the folder in which
+# RTDROOT must be the full path of the folder in which
 # this and its accessory scripts reside
 RTDROOT = ""
 
