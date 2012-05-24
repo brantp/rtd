@@ -28,7 +28,7 @@ available free for academic/non-profit use at http://www.enthought.com/products/
 '''
 
 from config import RTDROOT as radtag_denovo
-from preprocess_radtag_lane import get_baseQ
+from preprocess_radtag_lane import get_baseQ,smartopen
 
 from collections import defaultdict
 from itertools import groupby
@@ -55,7 +55,7 @@ def load_uniqued(all_quality,uniqued,readlen=None,nticks=20,baseQ=None):
     nreads = int(Popen('wc -l %s' % uniqued,shell=True,stdout=PIPE).stdout.read().split()[0])
     print >> sys.stderr, nreads
     
-    qfh = open(uniqued)
+    qfh = smartopen(uniqued)
     while baseQ is None:
 		line = qfh.next()
 		qstr = line.strip().split()[2]
@@ -296,7 +296,7 @@ def get_uniqued_error(infiles,cdest_searchbase):
     err_by_uni = {}
     for uniqued in infiles:
         rl = readlen_from_uniqued(uniqued)
-        cdest_search = uniqued+'-rtd/'+cdest_searchbase
+        cdest_search = uniqued.rstrip('.gz')+'-rtd/'+cdest_searchbase
         cdests = glob(cdest_search)
         if len(cdests) != 1:
             raise ValueError, 'search string %s did not result in a single .cdest file %s' % (cdest_search,cdests)

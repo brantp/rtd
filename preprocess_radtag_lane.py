@@ -564,7 +564,8 @@ if __name__ == '__main__':
         index = os.path.basename(r1).split('index')[-1].split('.')[0]
         idxstr = '_index%s' % index
     else:
-	    idxstr = ''
+        index = None
+        idxstr = ''
     
     if isinstance(fh,tuple):
         nreads2 = get_read_count(r2,lnum)
@@ -661,7 +662,7 @@ if __name__ == '__main__':
         os.system(os.path.join(RTDROOT,'summarize_sequencing_stats.py %s > %s.stats' % (outfile,outfile)))
 
         if opts.estimate_error:
-            err_clust_root = outfile + '-rtd'
+            err_clust_root = outfile.rstrip('.gz') + '-rtd'
             if opts.est_err_cores > 1:
                 cmd = os.path.join(RTDROOT,'rtd_run.py --cleanup -pe parallel -np %s -nc %s -I %s -te %s -s %s -cs %s %s' % (opts.est_err_parts, opts.est_err_cores, opts.est_err_radius, opts.est_err_cores, opts.cutsite, err_clust_root, outfile))
                 print >> sys.stderr, cmd
