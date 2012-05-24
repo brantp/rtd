@@ -614,9 +614,8 @@ if __name__ == '__main__':
     	tickon = 1
     print >> sys.stderr, '\tloading'
 
-    #PE:
-    if isinstance(fh,tuple):
-        outfile = os.path.join(os.path.dirname(r1), '%s_lane%s_PE%s.uniqued' % (fc,lane,idxstr))
+    if isinstance(fh,tuple): #PE
+        outfile = os.path.join(os.path.dirname(r1), '%s_lane%s_PE%s.uniqued.gz' % (fc,lane,idxstr))
         for i in xrange(nreads):
             if i%tickon==0: print >> sys.stderr, '\t\t%s / %s' % (i,nreads)
 
@@ -627,8 +626,8 @@ if __name__ == '__main__':
             if indiv is not None:
                 #store PE
                 store_PE(all_quality,indiv,read,qual)
-    else:
-        outfile = os.path.join(os.path.dirname(r1), '%s_lane%s_SR%s.uniqued' % (fc,lane,idxstr))
+    else: #SR
+        outfile = os.path.join(os.path.dirname(r1), '%s_lane%s_SR%s.uniqued.gz' % (fc,lane,idxstr))
         for i in xrange(nreads):
             if i%tickon==0: print >> sys.stderr, '\t\t%s / %s' % (i,nreads)
 

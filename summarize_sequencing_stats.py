@@ -26,7 +26,7 @@ def get_counts_by_pool(uniqued,db):
     ufields = get_uniqued_info(uniqued)
     pool_lookup = get_pool_lookup(db,ufields[0],ufields[1],ufields[3])
     counts_by_pool = {}
-    fh = open(uniqued)
+    fh = preprocess_radtag_lane.smartopen(uniqued)
     for l in fh:
         f = l.split()
         for ind,ct in zip(f[3].split(','),[int(i) for i in f[4].split(',')]):
