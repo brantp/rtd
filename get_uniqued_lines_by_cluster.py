@@ -2,6 +2,7 @@
 
 import numpy,os,sys,re
 from preprocess_radtag_lane import get_baseQ
+from preprocess_radtag_lane import smartopen as open
 
 
 def load_cluster_data(gr,tab,mID=None):

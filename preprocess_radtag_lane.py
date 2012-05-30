@@ -148,7 +148,15 @@ def get_adapter_index_lookup(verbose=True):
     
     key,gd_client = get_spreadsheet_key(ADAPTER_DATA)
     feed = gd_client.GetListFeed(key)
-    d = [dict([[st.strip() for st in el.split(':')] for el in entry.content.text.split(',')]) for entry in feed.entry]
+
+    d = []
+    for entry in feed.entry:
+        tl = [[st.strip() for st in el.split(':')] for el in entry.content.text.split(',')]
+        try:
+            d.append(dict(tl))
+        except:
+            print >> sys.stderr, 'tuple list did not parse:\n\t%s' % tl
+
     idxlookup = defaultdict(dict)
     for el in d:
         idxlookup[el['adaptersversion']].update({el['well']:el['idx']})
@@ -188,7 +196,16 @@ def get_individual_data_for_lane(filename=None,idxlookup=None,fc=None,lane=None,
 
 
     feed = gd_client.GetListFeed(key,query=q)
-    recs = [dict([[st.strip() for st in el.split(':')] for el in entry.content.text.split(',')]) for entry in feed.entry]
+
+    recs = []
+    for entry in feed.entry:
+        tl = [[st.strip() for st in el.split(':')] for el in entry.content.text.split(',')]
+        try:
+            recs.append(dict(tl))
+        except:
+            print >> sys.stderr, 'tuple list did not parse:\n\t%s' % tl
+
+    #recs = [dict([[st.strip() for st in el.split(':')] for el in entry.content.text.split(',')]) for entry in feed.entry]
     print >> sys.stderr, "%s records found for %s" % (len(recs), q.sq)
     adaptersversions = set([r['adaptersversion'] for r in recs])
     print >> sys.stderr, "adapters used: %s" % adaptersversions
@@ -493,8 +510,10 @@ if __name__ == '__main__':
     parser.add_argument('-idx','--index',default=None,type=str,help='multiplex index (if None, derive from sequence infile name)'+ds)
 
     parser.add_argument('-e','--estimate_error',action='store_true',help='invokes clustering to estimate error rate after completion of preprocessing'+ds)
+    parser.add_argument('-ee','--est_err_engine',default='local',choices=['local','parallel','lsf'],help='use this engine for parallelizing error estimate (rtd_run -pe argument)'+ds)
     parser.add_argument('-ec','--est_err_cores',default=1,type=int,help='parallelize error estimate run over this number of cores (serial if less than 2) REQUIRES GNU PARALLEL'+ds)
     parser.add_argument('-ep','--est_err_parts',default=4,type=int,help='number of query files to split error estimate simliarity calculation into (see rtd_run -np argument)'+ds)
+    parser.add_argument('-et','--est_err_threads',default=4,type=int,help='number of MCL expansion threads in clustering (see rtd_run -te argument)'+ds)
     parser.add_argument('-er','--est_err_radius',default=2,type=int,help='MCL radius argument (-I) for error estimate clustering'+ds)
 
     parser.add_argument('infiles',nargs='+',help='either 1 or 2 fastq files corresponding to reads from a single lane, and optionally read 2 sequences for that lane')
@@ -624,7 +643,7 @@ if __name__ == '__main__':
             indiv,read,qual = assign_read_to_indiv(l,indiv_data,indiv_reads_out_pattern=indiv_reads_out_pattern,\
             										fhdict=fhdict,passfh=passfh,read2_has_idx=read2_has_idx,\
             										baseQ_in=baseQ_in,baseQ_out=baseQ_out,lnum=lnum,output_lnum=opts.output_lnum)
-            if indiv is not None:
+            if indiv is not None and not opts.no_uniqued:
                 #store PE
                 store_PE(all_quality,indiv,read,qual)
     else: #SR
@@ -636,7 +655,7 @@ if __name__ == '__main__':
             
             indiv,read,qual = assign_read_to_indiv(l,indiv_data,indiv_reads_out_pattern=indiv_reads_out_pattern,\
             										fhdict=fhdict,passfh=passfh,baseQ_in=baseQ_in,baseQ_out=baseQ_out,lnum=lnum,output_lnum=opts.output_lnum)
-            if indiv is not None:
+            if indiv is not None and not opts.no_uniqued:
                 #store SR
                 store_SR(all_quality,indiv,read,qual)
                 
@@ -653,7 +672,7 @@ if __name__ == '__main__':
 
 
     if opts.no_uniqued:
-        print >> sys.stderr, '.uniqued output disabled'
+        print >> sys.stderr, '.uniqued output disabled, skip postprocessing on .uniqued'
     else:
         write_uniqued(all_quality,outfile,baseQ_out)
         print >> sys.stderr, 'output written to',outfile
@@ -662,19 +681,6 @@ if __name__ == '__main__':
         os.system(os.path.join(RTDROOT,'summarize_sequencing_stats.py %s > %s.stats' % (outfile,outfile)))
 
         if opts.estimate_error:
-            err_clust_root = outfile.rstrip('.gz') + '-rtd'
-            if opts.est_err_cores > 1:
-                cmd = os.path.join(RTDROOT,'rtd_run.py --cleanup -pe parallel -np %s -nc %s -I %s -te %s -s %s -cs %s %s' % (opts.est_err_parts, opts.est_err_cores, opts.est_err_radius, opts.est_err_cores, opts.cutsite, err_clust_root, outfile))
-                print >> sys.stderr, cmd
-                os.system(cmd)
-            else:
-                cmd = os.path.join(RTDROOT,'rtd_run.py --cleanup -pe local -np %s -nc 1 -I %s -s %s -cs %s %s' % (opts.est_err_parts, opts.est_err_radius, opts.cutsite, err_clust_root, outfile))
-                print >> sys.stderr, cmd
-                os.system(cmd)
-            cdest_file = glob(os.path.join(err_clust_root,'*I%s*.clstats.cdest' % opts.est_err_radius))[0]
-            cdest = float(open(cdest_file).read())
-            errest = cdest/readlen
-            print >> sys.stderr, 'sequencing error estimates: cluster dirt %0.4f, per-base error: %0.4f' % (cdest,errest)
-            open(os.path.splitext(cdest_file)[0]+'.errest','w').write(errest.__repr__()) 
+            os.system(os.path.join(RTDROOT,'estimate_error_by_clustering.py %s %s %s %s %s %s %s' % (outfile, opts.cutsite, opts.est_err_engine, opts.est_err_cores, opts.est_err_parts, opts.est_err_threads, opts.est_err_radius)))
     
     #done

@@ -28,7 +28,7 @@ available free for academic/non-profit use at http://www.enthought.com/products/
 '''
 
 from config import RTDROOT as radtag_denovo
-from preprocess_radtag_lane import get_baseQ,smartopen
+from preprocess_radtag_lane import get_baseQ,smartopen,get_read_count
 
 from collections import defaultdict
 from itertools import groupby
@@ -50,10 +50,7 @@ def load_uniqued(all_quality,uniqued,readlen=None,nticks=20,baseQ=None):
     all_quality per 20101114 - UPDATE below    
     '''
 
-    print >> sys.stderr, '%s readcount: ' % (uniqued),
-    #number of sequences
-    nreads = int(Popen('wc -l %s' % uniqued,shell=True,stdout=PIPE).stdout.read().split()[0])
-    print >> sys.stderr, nreads
+    nreads = get_read_count(uniqued)
     
     qfh = smartopen(uniqued)
     while baseQ is None:
@@ -71,7 +68,7 @@ def load_uniqued(all_quality,uniqued,readlen=None,nticks=20,baseQ=None):
     print >> sys.stderr, '\tloading'
 
 
-    for i,line in enumerate(open(uniqued)):
+    for i,line in enumerate(smartopen(uniqued)):
         if i % tickon == 0: print >> sys.stderr, '\t\t%s / %s (%d%%)' % (i,nreads,(float(i)/nreads)*100)
 
         try:
@@ -95,7 +92,7 @@ def load_uniqued(all_quality,uniqued,readlen=None,nticks=20,baseQ=None):
             all_quality[s]['sum_quality'] = q*c
             all_quality[s]['tot'] = c
 
-def preprocess_sequence_for_match(all_quality, cutsite, mIDfile, subject, queries, minlen=20):
+def preprocess_sequence_for_match(all_quality, cutsite, mIDfile, subjects, queries, minlen=20):
     '''given a quality dictionary
     {
     20101114 - UPDATE:
@@ -115,24 +112,37 @@ def preprocess_sequence_for_match(all_quality, cutsite, mIDfile, subject, querie
     Nx "query" each contain a partition (<nparts> total) of fasta formatted sequence.  All seqs greater than <minlen> included
 
     '''
+    import random
 
-    mID_fh = open(mIDfile,'w')
-    subj_fh = open(subject,'w')
+    mID_fh = smartopen(mIDfile,'w')
 
-    print >> sys.stderr, 'write query sequences'
+    
+    if len(subjects) == 1: #write all subjects to single file
+        this_subj_outfile = subjects[0]
+        this_subj_fh = smartopen(this_subj_outfile,'w')
+        print >> sys.stderr, this_subj_outfile
+    else: #write to multiple subject files for parallel execution
+        this_subj_outfile = None
+        subj_break_at = int(len(all_quality)/(len(subjects)))
+        scopy = deepcopy(subjects)
+
+    print >> sys.stderr, 'write sequences'
 
     gen_queries = []
+    gen_subjects = []
     
     if len(queries) == 1: #write all queries to single file
         this_outfile = queries[0]
-        this_query_fh = open(this_outfile,'w')
+        this_query_fh = smartopen(this_outfile,'w')
         print >> sys.stderr, this_outfile
     else: #write to multiple query files for parallel execution
         this_outfile = None
         break_at = int(len(all_quality)/(len(queries)))
         qcopy = deepcopy(queries)
-    
-    for i,s in enumerate(sorted(all_quality.keys())):
+
+    aqkeys = all_quality.keys()
+    random.shuffle(aqkeys)
+    for i,s in enumerate(aqkeys):
         c = all_quality[s]['tot']
         qsum = all_quality[s]['sum_quality']
         q = qsum / c
@@ -143,7 +153,15 @@ def preprocess_sequence_for_match(all_quality, cutsite, mIDfile, subject, querie
                 this_query_fh.close()
             this_outfile = qcopy.pop(0)
             print >> sys.stderr, i,this_outfile
-            this_query_fh = open(this_outfile,'w')
+            this_query_fh = smartopen(this_outfile,'w')
+
+        if len(subjects) > 1 and i%subj_break_at==0 and len(scopy) > 0: #move to the next query chunk
+            if this_subj_outfile:
+                gen_subjects.append(this_subj_outfile)
+                this_subj_fh.close()
+            this_subj_outfile = scopy.pop(0)
+            print >> sys.stderr, i,this_subj_outfile
+            this_subj_fh = smartopen(this_subj_outfile,'w')
 
         if 2 in q:
             first2 = numpy.arange(len(q))[q==2][0]
@@ -155,23 +173,23 @@ def preprocess_sequence_for_match(all_quality, cutsite, mIDfile, subject, querie
             this_query_fh.write('>%s\n%s\n' % (header,s[:first2]))
             mID_fh.write(header+'\t'+('\t'.join(all_quality[s]['mIDs']))+'\n')
             if s.startswith(cutsite) and c > 1:
-                subj_fh.write('>%s\n%s\n' % (header,s[:first2]))
+                this_subj_fh.write('>%s\n%s\n' % (header,s[:first2]))
 
     gen_queries.append(this_outfile)
     this_query_fh.close()
-    gen_subject = subject
-    subj_fh.close()
-    return gen_subject, gen_queries
+    gen_subjects.append(this_subj_outfile)
+    this_subj_fh.close()
+    return gen_subjects, gen_queries
 
 def get_shortest_readlen(unifiles):
     readlen = numpy.inf
     for uniqued in unifiles:
-        rl = len(open(uniqued).readline().strip().split()[0])
+        rl = len(smartopen(uniqued).readline().strip().split()[0])
         if rl < readlen:
             readlen = rl
     return readlen
 
-def make_similarity_calc_inputs(unifiles,set_mincycles,nticks,cutsite,mIDfile,subject,queries):
+def make_similarity_calc_inputs(unifiles,set_mincycles,nticks,cutsite,mIDfile,subjects,queries):
     if set_mincycles:
         readlen = set_mincycles
         print >> sys.stderr, 'read length set manually:',readlen
@@ -186,17 +204,17 @@ def make_similarity_calc_inputs(unifiles,set_mincycles,nticks,cutsite,mIDfile,su
         load_uniqued(all_quality,uniqued,readlen=readlen,nticks=nticks)
         print >> sys.stderr, 'Total number of unique sequences loaded:',len(all_quality)
 
-    gen_subject,gen_queries = preprocess_sequence_for_match(all_quality,cutsite,mIDfile,subject,queries)
-    if gen_subject == subject and set(gen_queries) == set(queries):
-        print >> sys.stderr, 'similarity calculation inputs successfully created (subject %s and %s queries)' % (subject, len(queries))
+    gen_subjects,gen_queries = preprocess_sequence_for_match(all_quality,cutsite,mIDfile,subjects,queries)
+    if set(gen_subjects) == set(subjects) and set(gen_queries) == set(queries):
+        print >> sys.stderr, 'similarity calculation inputs successfully created (%s subjects and %s queries)' % (len(subjects), len(queries))
     else:
-        raise ValueError, 'failure to match subjects: given %s generated %s, queries: (given - generated) %s, (generated - given) %s' % (subject,gen_subject,set(queries)-set(gen_queries),set(gen_queries)-set(queries))
+        raise ValueError, 'failure to match subjects: given %s generated %s, queries: (given - generated) %s, (generated - given) %s' % (set(subjects),set(gen_subjects),set(queries)-set(gen_queries),set(gen_queries)-set(queries))
 
     #drop sequences to save on ram for graph processing
     del(all_quality)
 
 
-def run_lsf_blat(subject,queries,blattile,blatargstr='',num_batches=100):
+def run_lsf_blat(subjects,queries,blattile,blatargstr='',num_batches=100):
     '''submits mcl_id_triples_by_blat.py jobs to LSF
 
     intended as an example of parallelization over a compute grid;
@@ -211,11 +229,13 @@ def run_lsf_blat(subject,queries,blattile,blatargstr='',num_batches=100):
     cmds = []
     labf = []
     for q in queries:
-        outbase = q.rstrip('.fa').rstrip('_query')+'_blat'+blatargstr.replace('=','').replace(' ','')
-        labf.append(outbase+'.label')
-        cmds.append('%smcl_id_triples_by_blat.py %s %s \\"%s\\" %s' % (radtag_denovo,subject,q,blatargstr,outbase))
+        for subject in subjects:
+            subjname = os.path.basename(subject).rstrip('.fa').rstrip('_subj')
+            outbase = q.rstrip('.fa').rstrip('_query')+'_blat'+'-subj'+subjname+blatargstr.replace('=','').replace(' ','')
+            labf.append(outbase+'.label')
+            cmds.append('%smcl_id_triples_by_blat.py %s %s \\"%s\\" %s' % (radtag_denovo,subject,q,blatargstr,outbase))
 
-    logfile = os.path.join(os.path.dirname(subject),'blat-log')
+    logfile = os.path.join(os.path.dirname(subjects[0]),'blat-log')
     try:
         os.unlink(logfile)
     except:
@@ -223,15 +243,18 @@ def run_lsf_blat(subject,queries,blattile,blatargstr='',num_batches=100):
     #print >> sys.stderr, 'LSF %s\nlog: %s' % (cmds,logfile)
     import time
     while len(cmds) > 0:
-        jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,'normal_serial',jobname_base='blat2mat',num_batches=num_batches)
+        jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,'normal_serial',bsub_flags='-R "select[mem > 20000]"',jobname_base='blat2mat',num_batches=num_batches)
         time.sleep(20)
         LSF.lsf_wait_for_jobs(jobids,logfile,namedict=namedict)
 
         cmds = LSF.lsf_no_success_from_log(logfile)
 
+    if not all([os.path.exists(f) for f in labf]):
+        raise OSError, 'blat failed'
+
     return labf
 
-def run_local_blat(subject,queries,blattile,blatargstr='',num_cores=1):
+def run_local_blat(subjects,queries,blattile,blatargstr='',num_cores=1):
     '''
     runs blat commands using os.system()
     runs all jobs as a single batch, to run on multiple cores/computers, consider run_parallel_blat()
@@ -243,18 +266,21 @@ def run_local_blat(subject,queries,blattile,blatargstr='',num_cores=1):
     cmds = []
     labf = []
     for q in queries:
-        outbase = q.rstrip('.fa').rstrip('_query')+'_blat'+blatargstr.replace('=','').replace(' ','')
-        labf.append(outbase+'.label')
-        cmds.append('%smcl_id_triples_by_blat.py %s %s "%s" %s' % (radtag_denovo,subject,q,blatargstr,outbase))
+        for subject in subjects:
+            subjname = os.path.basename(subject).rstrip('.fa').rstrip('_subj')
+            outbase = q.rstrip('.fa').rstrip('_query')+'_blat'+'-subj'+subjname+blatargstr.replace('=','').replace(' ','')
+            labf.append(outbase+'.label')
+            cmds.append('%smcl_id_triples_by_blat.py %s %s "%s" %s' % (radtag_denovo,subject,q,blatargstr,outbase))
 
-    shscr = os.path.join(os.path.dirname(subject) , 'runblat.sh')
-    open(shscr, 'w').writelines([cmd+';\n' for cmd in cmds])
+    shscr = os.path.join(os.path.dirname(subjects[0]) , 'runblat.sh')
+    smartopen(shscr, 'w').writelines([cmd+';\n' for cmd in cmds])
     os.system('chmod +x '+shscr)
-    os.system(shscr)
-
+    ret = os.system(shscr)
+    if ret != 0 or not all([os.path.exists(f) for f in labf]):
+        raise OSError, 'blat failed with code %s' % ret
     return labf
 
-def run_parallel_blat(subject,queries,blattile,blatargstr='',num_cores='+0'):
+def run_parallel_blat(subjects,queries,blattile,blatargstr='',num_cores='+0'):
     '''
     runs blat commands using GUN parallel.
 
@@ -266,29 +292,33 @@ def run_parallel_blat(subject,queries,blattile,blatargstr='',num_cores='+0'):
     cmds = []
     labf = []
     for q in queries:
-        outbase = q.rstrip('.fa').rstrip('_query')+'_blat'+blatargstr.replace('=','').replace(' ','')
-        labf.append(outbase+'.label')
-        cmds.append('%smcl_id_triples_by_blat.py %s %s "%s" %s' % (radtag_denovo,subject,q,blatargstr,outbase))
+        for subject in subjects:
+            subjname = os.path.basename(subject).rstrip('.fa').rstrip('_subj')
+            outbase = q.rstrip('.fa').rstrip('_query')+'_blat'+'-subj'+subjname+blatargstr.replace('=','').replace(' ','')
+            labf.append(outbase+'.label')
+            cmds.append('%smcl_id_triples_by_blat.py %s %s "%s" %s' % (radtag_denovo,subject,q,blatargstr,outbase))
 
-    shscr = os.path.join(os.path.dirname(subject) , 'runblat.sh')
-    open(shscr, 'w').writelines([cmd+';\n' for cmd in cmds])
+    shscr = os.path.join(os.path.dirname(subjects[0]) , 'runblat.sh')
+    smartopen(shscr, 'w').writelines([cmd+';\n' for cmd in cmds])
     os.system('chmod +x '+shscr)
-    os.system('parallel --progress -j %s < %s' % (num_cores,shscr))
+    ret = os.system('parallel --progress -j %s < %s' % (num_cores,shscr))
+    if ret != 0 or not all([os.path.exists(f) for f in labf]):
+        raise OSError, 'blat failed with code %s' % ret
 
     return labf
 
 
-def run_match(match_engine,parallel_engine,ncores,subject,queries,minlen,other_argstr):
+def run_match(match_engine,parallel_engine,ncores,subjects,queries,minlen,other_argstr):
     if match_engine == 'blat':
         if parallel_engine == 'local':
-            return run_local_blat(subject,queries,minlen,other_argstr,ncores)
+            return run_local_blat(subjects,queries,minlen,other_argstr,ncores)
         elif parallel_engine == 'lsf':
-            return run_lsf_blat(subject,queries,minlen,other_argstr,ncores)
+            return run_lsf_blat(subjects,queries,minlen,other_argstr,ncores)
         elif parallel_engine == 'parallel':
-            return run_parallel_blat(subject,queries,minlen,other_argstr,ncores)
+            return run_parallel_blat(subjects,queries,minlen,other_argstr,ncores)
 
 def readlen_from_uniqued(uniqued):
-    return len(open(uniqued).readline().strip().split()[0])
+    return len(smartopen(uniqued).readline().strip().split()[0])
 
 def get_uniqued_error(infiles,cdest_searchbase):
     from glob import glob
@@ -301,7 +331,7 @@ def get_uniqued_error(infiles,cdest_searchbase):
         if len(cdests) != 1:
             raise ValueError, 'search string %s did not result in a single .cdest file %s' % (cdest_search,cdests)
         else:
-            cd = float(open(cdests[0]).read())
+            cd = float(smartopen(cdests[0]).read())
         print >> sys.stderr, '%s: found cluster dirt %s for read length %s. Estimated error: %s' % (uniqued,cd,rl,cd/rl)
         err_by_uni[uniqued] = cd/rl
     return err_by_uni
@@ -319,7 +349,8 @@ if __name__ == '__main__':
     parser.add_argument('-pe','--parallel_engine',default='local',choices=['local','parallel','lsf'],help='specifies parallelization engine to use for distance matrix calculation'+ds)
     parser.add_argument('-l','--minlen',default=8,type=int,help='minimum tile/string match to calculate alignment in distance matrix calculation'+ds)
     parser.add_argument('--blatargstr',default='-minScore=20 -minMatch=2 -repMatch=1000000',help='additional arguments passed to blat if match_engine == "blat"'+ds)
-    parser.add_argument('-np','--nparts',default=40,type=int,help='number of match_engine runs to split distance matrix calculation into'+ds)
+    parser.add_argument('-np','--nparts',default=40,type=int,help='number of match_engine queries to split distance matrix calculation into'+ds)
+    parser.add_argument('-ns','--nsubj',default=1,type=int,help='number of match_engine subjects to split distance matrix calculation into'+ds)
     parser.add_argument('-nc','--ncores',default=4,type=int,help='number of cores to run distance matrix sub-parts on'+ds)
      
     parser.add_argument('-I','--mclradius',default=2,type=float,help='radius term for mcl clustering (given as -I term to mcl; see mcl documention)'+ds)
@@ -333,7 +364,8 @@ if __name__ == '__main__':
     parser.add_argument('-mi','--minindiv',default='100',help='minimum number of individuals that must be represented in a putatively orthologous sequence set to include in SAM. See sam_from_clust_uniqued.py'+ds)
     parser.add_argument('-ks','--keepseqs',default='200',help='maximum number of unique sequences from a cluster to align for SAM. See sam_from_clust_uniqued.py'+ds)
     parser.add_argument('-cs','--cluster_stats_only',action='store_true',help='calculate cluster statistics at supplied thresholds; do not generate alignments'+ds)
-
+    parser.add_argument('-se','--skip_errors',action='store_true',help='ignore errors in the alignment step of bam file generation (skip the offending cluster entirely)'+ds)
+    
     parser.add_argument('--cleanup',action='store_true',help='remove intermediate files as each step completes'+ds)
     
     parser.add_argument('outroot',help='folder to which intermediate files and output will be written')
@@ -369,6 +401,7 @@ if __name__ == '__main__':
     nticks = 20
 
     nparts = opts.nparts
+    nsubj = opts.nsubj
 
     outroot = opts.outroot
     infiles = opts.infiles
@@ -380,7 +413,9 @@ if __name__ == '__main__':
     if set_mincycles:
         outprefix += '_%sbp' % set_mincycles
 
-    subject = outprefix+'_subj.fa'
+
+    #subject = outprefix+'_subj.fa'
+    subjects = ['%s_%04dof%04d_subj.fa' % (outprefix,i+1,nsubj) for i in range(nsubj)]
     mIDfile = outprefix+'.mIDs'
     queries = ['%s_%04dof%04d_query.fa' % (outprefix,i+1,nparts) for i in range(nparts)]
 
@@ -401,14 +436,8 @@ if __name__ == '__main__':
     cdest_searchbase = os.path.basename(outprefix) + '*.clstats.cdest'
 
     clunifile = outprefix + '.cluni'
-    sambase = outprefix + '_%sdirt_%sindiv_%sseq' % (opts.clustdirt,opts.minindiv,opts.keepseqs)
 
-    
-    #
-    ############
-
-
-    if opts.clustdirt == 'None':
+    if opts.clustdirt == 'None': #set dirt cutoff based on estimated error rate and read lengths
         err_by_uni = get_uniqued_error(infiles,cdest_searchbase)
         mean_err = numpy.mean(err_by_uni.values())
         if set_mincycles:
@@ -419,6 +448,14 @@ if __name__ == '__main__':
             set_dirt = mean_err * get_shortest_readlen(infiles)
             print >> sys.stderr, 'dirt set to mean of error (%s) * shortest read length (%s) = %s' % (mean_err, get_shortest_readlen(infiles), set_dirt)
             opts.clustdirt = set_dirt
+
+
+    sambase = outprefix + '_%sdirt_%sindiv_%sseq' % (opts.clustdirt,opts.minindiv,opts.keepseqs)
+
+    
+    #
+    ############
+
 
 
     ############
@@ -436,46 +473,62 @@ if __name__ == '__main__':
         if not os.path.exists(grfile):
             if not (os.path.exists(matfile) and os.path.exists(tabfile)):
                 if not os.path.exists(labelfile):
-                    if not (os.path.exists(mIDfile) and os.path.exists(subject) and all([os.path.exists(query) for query in queries])):
+                    if not (os.path.exists(mIDfile) and all([os.path.exists(subj) for subj in subjects]) and all([os.path.exists(query) for query in queries])):
                         # make similarity calc inputs
-                        make_similarity_calc_inputs(infiles,set_mincycles,nticks,cutsite,mIDfile,subject,queries)
+                        make_similarity_calc_inputs(infiles,set_mincycles,nticks,cutsite,mIDfile,subjects,queries)
                     else:
-                        print >> sys.stderr, '%s, %s and %s inputs exist, using' % (outprefix+'.mIDs',subject,len(queries))
+                        print >> sys.stderr, '%s, %s subjects and %s queries inputs exist, using' % (outprefix+'.mIDs',len(subjects),len(queries))
                     # make similarity triples
                     print >> sys.stderr, 'generate labels %s by %s' % (labelfile,match_engine)
-                    labf = run_match(opts.match_engine,opts.parallel_engine,opts.ncores,subject,queries,minlen,blatargstr)
+                    labf = run_match(opts.match_engine,opts.parallel_engine,opts.ncores,subjects,queries,minlen,blatargstr)
+
                     print >> sys.stderr, 'match complete, concatenate...',
-                    os.system('cat %s > %s' % (' '.join(labf), labelfile))
+                    ret = os.system('cat %s > %s' % (' '.join(labf), labelfile))
+                    if ret != 0:
+                        raise OSError, 'cat failed with code %s' % ret
+
                     print >> sys.stderr, 'done'
                 else:
                     print >> sys.stderr, 'using labels %s' % labelfile
                 # make matrix
                 print >> sys.stderr, 'Write matrix for clustering'
-                os.system('mcxload -abc %s -o %s -write-tab %s' % (labelfile,matfile,tabfile))
+                ret = os.system('mcxload -abc %s -o %s -write-tab %s' % (labelfile,matfile,tabfile))
+                if ret != 0:
+                    raise OSError, 'mcxload failed with code %s' % ret
+
             else:
                 print >> sys.stderr, '%s and %s present, using' % (matfile,tabfile)
             # make graph
             if opts.mclthreads > 1:
                 print >> sys.stderr, 'perform multithreaded (%s) graph clustering' % opts.mclthreads
-                os.system('mcl %s -I %s -te %s -o %s' % (matfile,opts.mclradius,opts.mclthreads,grfile))
+                ret = os.system('mcl %s -I %s -te %s -o %s' % (matfile,opts.mclradius,opts.mclthreads,grfile))
+                if ret != 0:
+                    raise OSError, 'mcl failed with code %s' % ret
+
             else:
                 print >> sys.stderr, 'perform graph clustering'
-                os.system('mcl %s -I %s -o %s' % (matfile,opts.mclradius,grfile))
+                ret = os.system('mcl %s -I %s -o %s' % (matfile,opts.mclradius,grfile))
+                if ret != 0:
+                    raise OSError, 'mcl failed with code %s' % ret
         else:
             print >> sys.stderr, '%s present, using' % (grfile)
         # make cluni
         print >> sys.stderr, 'merge uniqued and clustering data'
-        os.system('%sget_uniqued_lines_by_cluster.py %s %s %s | sort -n > %s' % (radtag_denovo,grfile,tabfile,' '.join(infiles),clunifile))
+        ret = os.system('%sget_uniqued_lines_by_cluster.py %s %s %s | sort -n > %s' % (radtag_denovo,grfile,tabfile,' '.join(infiles),clunifile))
+        if ret != 0:
+            raise OSError, 'get_uniqued_lines_by_cluster.py failed with code %s' % ret
     else:
         print >> sys.stderr, '%s present, using' % (clunifile)
 
     #cleanup if invoked
-    if opts.cleanup:
+    if opts.cleanup and os.path.exists(clunifile) and os.path.getsize(clunifile) > 0:
         print >> sys.stderr, 'file cleanup invoked; remove:'
-        print >> sys.stderr, '\tsimilarity calculation subject',subject
-        if os.path.exists(subject): os.unlink(subject)
         print >> sys.stderr, '\tsimilarity calculation mID',mIDfile
         if os.path.exists(mIDfile): os.unlink(mIDfile)
+        print >> sys.stderr, '\tsimilarity calculation subjects [%s files]' % len(subjects)
+        for subject in subjects:
+            if os.path.exists(subject): os.unlink(subject)
+
         print >> sys.stderr, '\tsimilarity calculation queries [%s files]' % len(queries)
         for query in queries:
             if os.path.exists(query): os.unlink(query)
@@ -503,8 +556,8 @@ if __name__ == '__main__':
     else:
         readlen = 0
     if opts.cluster_stats_only:
-        cmd = '%ssam_from_clust_uniqued.py -d %s -i %s -k %s -l %s -cs %s %s' % (radtag_denovo,opts.clustdirt,opts.minindiv,opts.keepseqs,readlen,clunifile,sambase)
+        cmd = '%ssam_from_clust_uniqued.py -d %s -i %s -k %s -l %s %s -cs %s %s' % (radtag_denovo,opts.clustdirt,opts.minindiv,opts.keepseqs,readlen,(opts.skip_errors and '-s' or ''),clunifile,sambase)
     else:
-        cmd = '%ssam_from_clust_uniqued.py -d %s -i %s -k %s -l %s %s %s' % (radtag_denovo,opts.clustdirt,opts.minindiv,opts.keepseqs,readlen,clunifile,sambase)
+        cmd = '%ssam_from_clust_uniqued.py -d %s -i %s -k %s -l %s %s %s %s' % (radtag_denovo,opts.clustdirt,opts.minindiv,opts.keepseqs,readlen,(opts.skip_errors and '-s' or ''),clunifile,sambase)
     print cmd
     os.system(cmd)

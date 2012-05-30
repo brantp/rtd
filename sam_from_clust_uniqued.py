@@ -125,7 +125,7 @@ def indiv_in_clust(cl_lines,rep_cut = 0):
     return ind_cts
     
 
-def aln_from_clust(clname,cl_lines,keep_seqs=None,seq_len=0):
+def aln_from_clust(clname,cl_lines,keep_seqs=None,seq_len=0,break_on_error=True):
 
     if isinstance(cl_lines[0],str):
         cl_lines = [l.strip().split() for l in cl_lines]
@@ -162,12 +162,19 @@ def aln_from_clust(clname,cl_lines,keep_seqs=None,seq_len=0):
         else:
             ct += 1
         cl_node_ids.append('%s.%03d' % (node,ct))
-
-    cl_aln = sorted( zip( cl_node_ids, \
+    try:
+        cl_aln = sorted( zip( cl_node_ids, \
                           musclemap.muscle(cl_seqs,1), \
                           cl_quals, \
                           [zip( l[5].split(','), [int(i) for i in l[6].split(',')] ) for l in cl_lines] ) , \
                      key=lambda x: (len(x[1].replace('-','').replace('N','')),len(x[3]),len(x[2].replace('#',''))),reverse=True)
+    except:
+        print >> sys.stderr, 'alignment failed for cluster %s (%s lines)' % (cl_name,len(cl_lines))
+        if break_on_error:
+            raise
+        else:
+            print >> sys.stderr, '--skip_errors requested; proceeding'
+            return None
 
     return cl_aln
 
@@ -233,6 +240,7 @@ if __name__ == '__main__':
     parser.add_argument('-l','--seq_len',default=0,type=int,help='arbitrarily truncate sequences in SAM/BAM output at this length if not 0'+ds)
 
     parser.add_argument('-cs','--calc_only',action='store_true',help='calculate cluster statistics at supplied thresholds; do not generate alignments'+ds)
+    parser.add_argument('-s','--skip_errors',action='store_true',help=''+ds)
     
     parser.add_argument('cluniq',help='sorted .cluniq file containing cluster-associated unique sequences')
     parser.add_argument('fbase',help='basename for output files')
@@ -252,6 +260,13 @@ if __name__ == '__main__':
         os.makedirs(fdir)
     except:
         pass
+
+    if opts.skip_errors:
+        break_on_error = False
+        print >> sys.stderr, 'skip_errors invoked; problem clusters will be skipped entirely'
+    else:
+        break_on_error = True
+        print >> sys.stderr, 'skip_errors not set; problem clusters will halt analysis'
 
     fh = open(cluniq)
     if not opts.calc_only:
@@ -274,7 +289,7 @@ if __name__ == '__main__':
                 clstats_fh.write('%s\t%s\t%s\t%s\n' % (this_cl,len(cl_lines),cl_indiv,cl_dirt))
                 if cl_on % 100 == 0: print >> sys.stderr, '%s\tcluster: %s\tunique seqs: %s\tindiv: %s\tdirt: %s' % (cl_on,this_cl,len(cl_lines),cl_indiv,cl_dirt)
                 if not opts.calc_only and cl_dirt < clust_dirt_max and cl_indiv >= min_indiv: 
-                    cl_aln = aln_from_clust(this_cl,cl_lines,keep_seqs,seq_len)
+                    cl_aln = aln_from_clust(this_cl,cl_lines,keep_seqs,seq_len,break_on_error)
                     write_sam_from_aln(this_cl,cl_aln,rg_dict,samheader_fh,sambody_fh,ref_fh)
 
             cl_on += 1
@@ -285,7 +300,7 @@ if __name__ == '__main__':
     clstats_fh.write('%s\t%s\t%s\t%s\n' % (this_cl,len(cl_lines),cl_indiv,cl_dirt))
     if not opts.calc_only:
         cl_aln = aln_from_clust(this_cl,cl_lines,keep_seqs)
-        if calc_cluster_dirt(cl_lines) < clust_dirt_max and len(indiv_in_clust(cl_lines)) >= min_indiv:
+        if cl_aln is not None and calc_cluster_dirt(cl_lines) < clust_dirt_max and len(indiv_in_clust(cl_lines)) >= min_indiv:
             write_sam_from_aln(this_cl,cl_aln,rg_dict,samheader_fh,sambody_fh,ref_fh)
 
     clstats_fh.close()

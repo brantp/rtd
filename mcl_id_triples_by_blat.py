@@ -12,11 +12,40 @@ from config import SCRATCH as scratch
 
 keep_blat = False
 pct_id_cut = 0.9
+min_space_on_scratch = 100000 #in mb
+
+def splitpath_rec(path, maxdepth=20):
+     ( head, tail ) = os.path.split(path)
+     return splitpath_rec(head, maxdepth - 1) + [ tail ] \
+         if maxdepth and head and head != path \
+         else [ head or tail ]
+
+def splitpath(path):
+    pathli = splitpath_rec(path)
+    if pathli[0] == '/':
+        pathli = pathli[1:]
+        pathli[0] = '/'+pathli[0]
+    return pathli
+
+def space_free_on_volume(vol,unit='M',verbose=False):
+    '''returns free space on the specified volume in units <unit>
+    '''
+    from subprocess import Popen,PIPE
+    if verbose:
+        print >> sys.stderr, 'checking free space on volume %s ...' % vol,
+    free = int(Popen('df -P --sync -B %s %s' % (unit,vol), shell=True, stdout=PIPE).stdout.readlines()[-1].strip().split()[3].rstrip(unit))
+    if verbose:
+        print >> sys.stderr, '%s %sB' % (free,unit)
+    return free
 
 if __name__ == '__main__':
     s,q,args,outbase = sys.argv[1:]
 
+    scratch_space = space_free_on_volume(splitpath(scratch)[0],verbose=True)
     if keep_blat:
+        outf = outbase+'.blat'
+    elif scratch_space < min_space_on_scratch:
+        print >> sys.stderr, 'available space on scratch (%s MB) is less than specified minimum (%s MB); use working directory' % ( scratch_space,min_space_on_scratch)
         outf = outbase+'.blat'
     else:
         try:
