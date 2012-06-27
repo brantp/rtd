@@ -483,9 +483,10 @@ if __name__ == '__main__':
                     labf = run_match(opts.match_engine,opts.parallel_engine,opts.ncores,subjects,queries,minlen,blatargstr)
 
                     print >> sys.stderr, 'match complete, concatenate...',
-                    ret = os.system('cat %s > %s' % (' '.join(labf), labelfile))
+                    catcmd = 'cat %s > %s' % (' '.join(labf), labelfile)
+                    ret = os.system(catcmd)
                     if ret != 0:
-                        raise OSError, 'cat failed with code %s' % ret
+                        raise OSError, 'cat failed with code %s\n%s' % (ret,catcmd)
 
                     print >> sys.stderr, 'done'
                 else:

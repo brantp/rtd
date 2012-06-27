@@ -12,6 +12,21 @@ import musclemap
 from collections import defaultdict
 from config import RTDROOT
 
+def next_cluster_lines(fh):
+    this_cl = None
+    cl_lines = []
+    for l in fh:
+        if l.split()[0] != this_cl:
+            if this_cl is not None:
+                return cl_lines
+            else:
+                this_cl = l.split()[0]
+                cl_lines.append(l)
+        else:
+            cl_lines.append(l)
+
+
+
 def samline_from_alnpair(rname,raln,qname,qaln,qqual):
     if set(qqual) == set(['#']):
         return None
@@ -169,7 +184,7 @@ def aln_from_clust(clname,cl_lines,keep_seqs=None,seq_len=0,break_on_error=True)
                           [zip( l[5].split(','), [int(i) for i in l[6].split(',')] ) for l in cl_lines] ) , \
                      key=lambda x: (len(x[1].replace('-','').replace('N','')),len(x[3]),len(x[2].replace('#',''))),reverse=True)
     except:
-        print >> sys.stderr, 'alignment failed for cluster %s (%s lines)' % (cl_name,len(cl_lines))
+        print >> sys.stderr, 'alignment failed for cluster %s (%s lines)' % (clname,len(cl_lines))
         if break_on_error:
             raise
         else:

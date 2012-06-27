@@ -55,7 +55,17 @@ def smartopen(filename,*args,**kwargs):
         return open(filename,*args,**kwargs)
 
 
-def get_read_count(filename,lnum=None):
+def get_read_count(filename,lnum=None,use_cache=True):
+
+    if use_cache:
+        rcc = filename+'.rc.cache'
+        try:
+            filesize,rc = open(rcc).readline().strip().split()
+            if float(filesize) == os.path.getsize(filename):
+                print >> sys.stderr, 'read count from cached value: %s' % rc
+                return int(rc)
+        except:
+            pass
 
     if lnum is None:
         if smartopen(filename).read(1) == '@':
@@ -67,12 +77,15 @@ def get_read_count(filename,lnum=None):
         print >> sys.stderr, 'getting read count for compressed file',filename,'...',
         rc = int(Popen('gunzip -c %s | wc -l' % filename,shell=True,stdout=PIPE).stdout.read().split()[0]) / lnum
         print >> sys.stderr, rc
-        return rc
     else:
         print >> sys.stderr, 'getting read count for file',filename,'...',
         rc = int(Popen('wc -l %s' % filename,shell=True,stdout=PIPE).stdout.read().split()[0]) / lnum
         print >> sys.stderr, rc
-        return rc
+
+    if use_cache:
+        open(rcc,'w').write('%s\t%s\n' % (os.path.getsize(filename),rc))
+        
+    return rc
 
 def get_baseQ(qstr):
     q = [ord(c) for c in qstr]
@@ -214,7 +227,16 @@ def get_individual_data_for_lane(filename=None,idxlookup=None,fc=None,lane=None,
     if len(idxlens) != 1:
         raise ValueError, 'non-uniform index lengths %s for %s' % (idxlens,filename)
 
-    sampleids = [r['sampleid'] for r in recs]
+    try:
+        sampleids = [r['sampleid'] for r in recs]
+    except KeyError:
+        try: #permit backup sample ID use
+            sampleids = [r['sampleid2'] for r in recs]
+        except KeyError:
+            print >> sys.stderr, 'not all samples have ID:'
+            for d in recs:
+                print >> sys.stderr, d.get('sampleid','MISSING'),d
+            raise
     wells = [r['adapter'] for r in recs]
 
     if len(set(sampleids)) != len(sampleids):
@@ -334,8 +356,12 @@ def assign_read_to_indiv(line,indiv_data,mismatch_allowed=1, \
                     ts = [s[:idxlen] for s in ss]
                     tqs = [qstr[:idxlen] for qstr in qstrs]
                     tagdists = [sorted([(distance(t_this,t),t_this) for t_this in indiv_data.keys()]) for t in ts]
-                    indiv_cand = [indiv_data[tagdist[0][1]]['sampleid'] for tagdist in tagdists \
-                                  if tagdist[0][0] <= mismatch_allowed and tagdist[1][0] > mismatch_allowed]
+                    try:
+                        indiv_cand = [indiv_data[tagdist[0][1]]['sampleid'] for tagdist in tagdists \
+                                      if tagdist[0][0] <= mismatch_allowed and tagdist[1][0] > mismatch_allowed]
+                    except:
+                        indiv_cand = [indiv_data[tagdist[0][1]]['sampleid2'] for tagdist in tagdists \
+                                      if tagdist[0][0] <= mismatch_allowed and tagdist[1][0] > mismatch_allowed]
                     if len(set(indiv_cand)) == 1:
                         indiv = indiv_cand[0]
                         read = [s[idxlen:] for s in ss]
@@ -360,7 +386,7 @@ def assign_read_to_indiv(line,indiv_data,mismatch_allowed=1, \
                 else:
                     if indiv_reads_out_pattern is not None:
                         for h,t,tq,s,q,rn,pat in zip(heads,ts,tqs,read,qual,[1,2],indiv_reads_out_pattern):
-                            newhead = '%s:%s:%s' % (h,t,tq)
+                            newhead = '%s %s:%s' % (h,t,tq)
                             try:
                                 fhdict[(indiv,rn)].write(as_fq_line(newhead,s,q,baseQ_out,output_lnum))
                             except KeyError:
