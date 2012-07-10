@@ -43,16 +43,26 @@ def load_vcf(vcf,allele_map,indiv_gt_phred_cut=None,ding_on=100000,return_map=Fa
 			sd = dict(zip(headers[:FORMAT],fields[:FORMAT]))
 			loc = '%s.%s' % (sd['CHROM'],sd['POS'])
 			key = (sd['CHROM'],sd['POS'])
-			
+
+			if not loc in allele_map.keys(): #not interested; skip!
+				continue
+				
+
+			#temp hack for multiallelic sites
+			if ',' in sd['ALT']:
+				print >> sys.stderr, '!MULTIALLELIC SITE AT %s' % (key,)
+				continue
+			#temp hack for GQ-absent sites
+			if not 'GQ' in fields[FORMAT]:
+				print >> sys.stderr, '!GQ NOT CALCULATED AT %s' % (key,)
+				continue
+
 			try:
 				infostr = sd.pop('INFO')
 				sd.update(dict([el.split('=') for el in infostr.split(';') if '=' in el]))
 			except KeyError:
 				pass
 
-			if not loc in allele_map.keys(): #not interested; skip!
-				continue
-				
 			print >> sys.stderr, '%s found ...' % loc,
 			#populate individual genotype metrics provided each GQ >= indiv_gt_phred_cut if defined
 			sd['indiv_gt'] = {}
