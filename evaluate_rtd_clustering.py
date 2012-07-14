@@ -204,6 +204,8 @@ def draw_clust_by_reads_scatter(rc_sort,cd_sort,inds,rc_orig,cd_cut=None,rc_low=
 
     if xmax is None:
         xmax = min(max(rc_orig.values())*2,sum(rc_orig.values()),numpy.mean(rc_orig.values())*5)
+    else:
+        xmax = int(xmax)
 
     pylab.figure(fignum,figsize)
 
@@ -280,11 +282,33 @@ def main(uniqueds, cluni, set_cd_cut=None, rc_low=4, rc_hi=10, simstep=10000, wi
     except:
         print >> sys.stderr, 'ind_by_clust plot draw failed'
     try:
-        draw_clust_by_reads_scatter(rc_sort,cd_sort,inds,rc_orig,cd_cut,rc_low=rc_low,rc_hi=rc_hi,simstep=simstep,fignum=startfig+3,filename='%s.clustByReads%s' % (cluni,figext))
+        draw_clust_by_reads_scatter(rc_sort,cd_sort,inds,rc_orig,cd_cut,rc_low=rc_low,rc_hi=rc_hi,simstep=simstep,xmax=xmax,fignum=startfig+3,filename='%s.clustByReads%s' % (cluni,figext))
     except:
         print >> sys.stderr, 'clust_by_reads plot draw failed'
     
+
+if __name__ == '__main__':
+
+    import argparse
+
+    ds =  ' [%(default)s]'
+    #create command line parser
+    parser = argparse.ArgumentParser(description='plot run metrics for ddRAD de novo analysis')
+
+    parser.add_argument('-lt','--low_threshold',default=4,type=int,help='"low" read coverage condition for cluster inclusion'+ds)
+    parser.add_argument('-ht','--high_threshold',default=10,type=int,help='"high" read coverage condition for cluster inclusion'+ds)
+
+    parser.add_argument('-s','--simulation_step',default=10000,type=int,help='x-axis values to interpolate predicted coverage'+ds)
+    parser.add_argument('-x','--scatter_xmax',default=None,help='x-axis maximum value fof scatter'+ds)
+
+    parser.add_argument('-w','--window',default=1000,type=int,help='cluster bin size for boxplot analyses'+ds)
+
+    parser.add_argument('cluni',help='.cluni clustering result')
+    parser.add_argument('uniqueds',nargs='+',help='.uniqued files incorporated in clustering analysis')
+
+    opts = parser.parse_args()
+
+    main(opts.uniqueds, opts.cluni, set_cd_cut=None, rc_low=opts.low_threshold, rc_hi=opts.high_threshold, simstep=opts.simulation_step, win=opts.window, xmax=opts.scatter_xmax, startfig=0, figext='.pdf')
     
-        
 
     

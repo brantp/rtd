@@ -138,13 +138,18 @@ def lsf_jobs_submit(cmds,outfile,queue='short_serial',bsub_flags='',jobname_base
 
     if batch_size:
         cmds = ['; '.join(cmds[i:i+batch_size]) for i in xrange(0,len(cmds),batch_size)]
+
+    try:
+        os.makedirs(os.path.dirname(outfile))
+    except:
+        pass
     
     jobids = {}
     if jobname_base:
         namedict = {}
     else:
         namedict = None
-    execbase = 'bsub -o %s -q %s %s' % (outfile,queue,bsub_flags)
+    execbase = 'bsub -q %s %s' % (queue,bsub_flags)
     print >> sys.stderr,'Adding jobs'
 
     for execstr in cmds:
@@ -155,9 +160,10 @@ def lsf_jobs_submit(cmds,outfile,queue='short_serial',bsub_flags='',jobname_base
         execfull = execbase
         if jobname_base:
             jname = random_filename(prefix=jobname_base)
-            execfull += ' -J %s' % jname
+            execfull += ' -J %s -o %s-%s.lsflog' % (jname,outfile,jname)
         else:
             jname = None
+            execfull += ' -o %s.lsflog' % random_filename(prefix='noName-')
             
         if ';' in execstr or len(execstr) > 1024 or batch_size:
             if jname:
