@@ -11,7 +11,7 @@ import os, sys, re
 from config import SCRATCH as scratch
 
 keep_blat = False
-pct_id_cut = 0.9
+pct_id_cut = 0.8
 min_space_on_scratch = 100000 #in mb
 
 def splitpath_rec(path, maxdepth=20):
