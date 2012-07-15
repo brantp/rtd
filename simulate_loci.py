@@ -128,7 +128,7 @@ if __name__ == "__main__":
 
     opts = parser.parse_args()
 
-    X = range(0,opts.xmax,opts.xstep)
+    X = numpy.arange(0,opts.xmax,opts.xstep)
 
     frags_by_len = countdict(fa_cuts(opts.fa,opts.e1,opts.e2))
 
@@ -142,12 +142,33 @@ if __name__ == "__main__":
 
     Y = numpy.array(coverage_curve(X,m,s,frags_by_len,opts.threshold,opts.max_frag_size))
 
-    plotname = '%s_%s-%s_mean%s_sd%s_threshold%s.pdf' % (opts.fa,opts.e1,opts.e2,m,s,opts.threshold)
-    
+    plotname = '%s_%s-%s_mean%s_sd%s_threshold%s_clustByReads.pdf' % (opts.fa,opts.e1,opts.e2,m,s,opts.threshold)
 
+    pylab.subplot(2,1,1)
     pylab.plot(X,Y,'k')
     pylab.plot(X,Y*0.75,'--k')
     pylab.plot(X,Y*0.5,':k')
+    pylab.subplot(2,1,2)
+    pylab.plot(X,(Y*1.0)/X,'k')
+    pylab.plot(X,(Y*0.75)/X,'--k')
+    pylab.plot(X,(Y*0.5)/X,':k')
+
+    
     pylab.savefig(plotname)
 
-    print >> sys.stderr, '\nplot stored as %s' % plotname
+    print >> sys.stderr, '\nsaturation plot stored as %s' % plotname
+
+    plotname = '%s_%s-%s_fragdist.pdf' % (opts.fa,opts.e1,opts.e2)
+
+    pylab.figure(2)
+    pylab.subplot(2,1,1)
+    pylab.plot(*zip(*[(x,frags_by_len.get(x,0)) for x in xrange(1000)]))
+    pylab.subplot(2,1,2)
+    pylab.plot(*zip(*[(x,frags_by_len.get(x,0)) for x in xrange(10000)]))
+    
+    pylab.savefig(plotname)
+
+    print >> sys.stderr, '\nfragment distribution plot stored as %s' % plotname
+    maxi = sorted(zip(((Y*1.0)/X),Y,X))[-1]
+    
+    print opts.fa,opts.e1,opts.e2,'size mean:',m,'size stdev:',s,'peak efficiency %0.2f: %s loci, %s reads' % maxi
