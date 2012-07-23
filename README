@@ -18,7 +18,10 @@ see (at the time of this writing, March 09 2011)
   GNU parallel http://savannah.gnu.org/projects/parallel/
 
   numpy *      http://sourceforge.net/projects/numpy/files/
-  gdata        http://code.google.com/p/gdata-python-client/downloads/list
+  gdata        install gdata v2.0.10 included in this repository
+			(recent versions are known to be incompatible
+			with rtd code, but are available at:
+			http://code.google.com/p/gdata-python-client/downloads/list)
   editdist     http://www.mindrot.org/projects/py-editdist/
 
 * N.B. numpy is also available as part of the excellent Enthought Python Distribution,
