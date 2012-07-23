@@ -246,8 +246,8 @@ def run_lsf_blat(subjects,queries,blattile,blatargstr='',num_batches=100):
         jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,'normal_serial',bsub_flags='-R "select[mem > 20000]"',jobname_base='blat2mat',num_batches=num_batches)
         time.sleep(20)
         LSF.lsf_wait_for_jobs(jobids,logfile,namedict=namedict)
-
-        cmds = LSF.lsf_no_success_from_log(logfile)
+        logfiles = glob(logfile+'*.lsflog')
+        cmds = reduce(lambda x,y:x+y, [LSF.lsf_no_success_from_log(lf) for lf in logfiles])
 
     if not all([os.path.exists(f) for f in labf]):
         raise OSError, 'blat failed'
