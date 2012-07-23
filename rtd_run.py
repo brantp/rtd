@@ -236,10 +236,12 @@ def run_lsf_blat(subjects,queries,blattile,blatargstr='',num_batches=100):
             cmds.append('%smcl_id_triples_by_blat.py %s %s \\"%s\\" %s' % (radtag_denovo,subject,q,blatargstr,outbase))
 
     logfile = os.path.join(os.path.dirname(subjects[0]),'blat-log')
-    try:
-        os.unlink(logfile)
-    except:
-        pass
+    logfiles = glob(logfile+'*.lsflog')
+    for lf in logfiles:
+        try:
+            os.unlink(lf)
+        except:
+            pass
     #print >> sys.stderr, 'LSF %s\nlog: %s' % (cmds,logfile)
     import time
     while len(cmds) > 0:
