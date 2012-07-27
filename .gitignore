@@ -1,6 +1,7 @@
 config.py
 test-data/
 full-test-data/
+gdata-2.0.10/
 
 #emacs files
 *~
