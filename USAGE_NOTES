@@ -1,0 +1,81 @@
+GETTING STARTED; SETTING UP SAMPLE DATABASE GOOGLE DOCS
+
+- SET UP config.py:
+Copy template (config.template.py) to a working config.  At a bash prompt ($):
+$ cp config.template.py config.py
+
+Edit this config.py file to contain values as indicated for a google docs account you wish to use for sample tracking
+
+Also supply a path for scratch file creation, and the path to your rtd scripts (this folder)
+
+- SET UP google docs tables:
+Run the included initialization script:
+$ initialize_sample_DB.py
+
+- POPULATE DB_library_data google doc
+
+Individual IDs will be drawn from the combination of:
+DB_library_data (associates an individual sample with its ligated adapter) and
+DB_index_by_well (associates the adapter with the expected barcode sequence present in the read data)
+
+Login to google docs with the account you provided in config.py (docs.google.com)
+Open DB_library_data, and add records as follows:
+
+So far the DB_library_data has the following field (column) headers:
+sampleID pool adapter adaptersversion flowcell lane index
+
+sampleid can be whatever you like, although should contain only alphanumerics, dash or underscore. 
+Pool is the size-selection grouping (samples in the same sizing lane have the same pool).  
+Adapter is the well (or tube #) of the adapter to which this sample's DNA is ligated,
+adaptersversion indicates the set of adapters this well comes from.
+Flowcell, lane and index come when the samples are sequenced, and are
+matched to the options of the same names upon invocation of preprocess_radtag_lane.py
+
+Note on relationship between DB_library_data and DB_index_by_well:
+the column mapping between these sheets is as follows:
+DB_library_data:"adapter" <-> DB_index_by_well:"well"
+DB_library_data:"adaptersversion" <-> DB_index_by_well:"adaptersversion"
+
+Thus, assigning a read barcode to an individual is the process of
+retrieving all records from DB_library_data matching the
+(flowcell,lane,[index]) specified, and mapping
+DB_library_data:"sampleid" to DB_index_by_well:"idx" (the sequence to
+match in read data) via the field mappings stated above.
+
+Two example DB_library_data lines follow:
+
+sampleid        pool    adapter adaptersversion flowcell        lane    index
+CRL129  1       A1      rad48   100617  1
+YS_E001 1       29      flex48  120330_SN343_0318_AC0LB5ACXX    5       11
+
+In the first case, the adapter set was "rad48" which we have arrayed
+in a microplate, so the adapter that got added in the ligation is
+identified by its well coordinate in the plate (this just comes from
+my lab notebook).  This sample was sequenced in lane 1 of the flowcell
+we've called 100617.  Any other samples with pool=1, flowcell=100617,
+lane=1 are assumed to have been size-selected in the same gel/pippin
+lane.
+In the second case, the adapter set is "flex48", and these are in
+numbered tubes, so rather than "LetterNumber" well coordinates, this
+just got a number (the tube number).  Its pool is also 1, but pools
+are only keyed within their flowcell/lane/[index] set, so this pool 1
+is not the same as the previous pool 1.
+Finally, note that the first sample had no index; this is fine, this
+just means we didn't do illumina-style "third read" multiplexing for
+that sample, whereas for the second example we did (using index #11)
+
+- RUN preprocess_radtag_lane.py
+
+we start with the s_X_[1|2]_sequence[_indexZ].txt[.gz]
+fastq files and feed those to preprocess_radtag_lane.py (X=lane,
+Z=index; both from DB_library_data), or alternatively with any file
+named whatever you like, as long as flowcell, lane and optionally
+index are supplied as options to preprocess_radtag_lane.  
+
+See preprocess_radtag_lane.py help:
+$ preprocess_radtag_lane.py -h
+
+- RUN rtd_run.py
+
+using the .uniqued.gz files generated for each lane/index, invoke rtd_run.py per help:
+$ rtd_run.py -h
