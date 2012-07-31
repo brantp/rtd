@@ -535,6 +535,8 @@ if __name__ == '__main__':
     parser.add_argument('-l','--lane',default=None,type=str,help='lane (if None, derive from sequence infile name)'+ds)
     parser.add_argument('-idx','--index',default=None,type=str,help='multiplex index (if None, derive from sequence infile name)'+ds)
 
+    parser.add_argument('-suf','--suffix',default=None,type=str,help='suffix for .uniqued file (permits processing split files)'+ds)
+
     parser.add_argument('-e','--estimate_error',action='store_true',help='invokes clustering to estimate error rate after completion of preprocessing'+ds)
     parser.add_argument('-ee','--est_err_engine',default='local',choices=['local','parallel','lsf'],help='use this engine for parallelizing error estimate (rtd_run -pe argument)'+ds)
     parser.add_argument('-ec','--est_err_cores',default=1,type=int,help='parallelize error estimate run over this number of cores (serial if less than 2) REQUIRES GNU PARALLEL'+ds)
@@ -611,6 +613,9 @@ if __name__ == '__main__':
     else:
         index = None
         idxstr = ''
+
+    if opts.suffix is not None:
+        idxstr = idxstr+'_'+opts.suffix
     
     if isinstance(fh,tuple):
         nreads2 = get_read_count(r2,lnum)
@@ -703,8 +708,10 @@ if __name__ == '__main__':
         write_uniqued(all_quality,outfile,baseQ_out)
         print >> sys.stderr, 'output written to',outfile
 
-        print >> sys.stderr, 'generate preprocess summary (summarize_sequencing_stats.py)'
-        os.system(os.path.join(RTDROOT,'summarize_sequencing_stats.py %s > %s.stats' % (outfile,outfile)))
+        # summarize stats buggy; pool_lookup throws errors and call to Util isn't portable
+        # disable until fixed
+        #print >> sys.stderr, 'generate preprocess summary (summarize_sequencing_stats.py)'
+        #ret = os.system(os.path.join(RTDROOT,'summarize_sequencing_stats.py %s > %s.stats' % (outfile,outfile)))
 
         if opts.estimate_error:
             os.system(os.path.join(RTDROOT,'estimate_error_by_clustering.py %s %s %s %s %s %s %s' % (outfile, opts.cutsite, opts.est_err_engine, opts.est_err_cores, opts.est_err_parts, opts.est_err_threads, opts.est_err_radius)))
