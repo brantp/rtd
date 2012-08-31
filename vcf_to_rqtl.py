@@ -9,7 +9,7 @@ G = individual genotype call quality threshold
 # functionality from short_read now copied here
 #from short_read_analysis import variant_detection,extract_genotypes_from_mclgr
 
-import os,sys
+import os,sys,re,numpy
 from collections import defaultdict
 
 def hwe(indiv_gt):
@@ -59,7 +59,7 @@ def hwe(indiv_gt):
 
     return X2
         
-def maf(indiv_gt):
+def maf(indiv_gt,alt_as_minor=False):
     '''returns the counts of the minor allele for an indiv_gt dict as in vcf_data above'''
 
     A = 0
@@ -69,14 +69,17 @@ def maf(indiv_gt):
         A += v['GT'].count('0')
         a += v['GT'].count('1')
 
-    return min(A,a)
+    if alt_as_minor:
+        return a
+    else:
+        return min(A,a)
 
 def fract_het(indiv_gt):
     gts = [v['GT'] for v in indiv_gt.values()]
 
     return (gts.count('0/1') + gts.count('0|1') + gts.count('1|0'))/float(len(gts))
 
-def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cut=None,store_indiv_prefix=None,drop_indiv=None,biallelic_sites=True,skip_noGQ=True):
+def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cut=None,store_indiv_prefix=None,drop_indiv=None,biallelic_sites=True,skip_noGQ=True,alt_as_minor=False):
     '''populates and returns a site:properties dict from vcf file
 
     if store_only is set, must be a list of fields to retain
@@ -99,16 +102,9 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
             continue
 
         if line.startswith('#CHROM'):
-            if write_thresholded_vcf is not None:
-                ofh.write(line)
             headers = line[1:].split()
             exp_elements = len(line.split())
             FORMAT = headers.index('FORMAT')
-            if write_fasta_base is not None: #DON'T INCLUDE DROP_INDIV
-                if drop_indiv is not None:
-                    indivs = list(set(headers[FORMAT+1:]) - set(drop_indiv))
-                else:
-                    indivs = headers[FORMAT+1:]
         elif line.startswith('#'):
             continue
         else:
@@ -149,7 +145,7 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
 
             if len(sd['indiv_gt']) > 0: 
                 sd['hwe'] = hwe(sd['indiv_gt'])
-                sd['mac'] = maf(sd['indiv_gt'])
+                sd['mac'] = maf(sd['indiv_gt'],alt_as_minor)
                 sd['maf'] = sd['mac'] / (2. * len(sd['indiv_gt']))
                 if sd['hwe'] is None:
                     sd['mafbyhwe'] = None
@@ -171,8 +167,6 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
                     sd = keep_sd
                 if len(sd) > 0:
                     vcf_data[key] = sd
-                if write_thresholded_vcf is not None:
-                    ofh.write('\t'.join(fields) + '\n')
 
     return vcf_data
 
