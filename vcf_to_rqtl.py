@@ -1,7 +1,11 @@
 #!/usr/bin/env python
 '''invocation:
-vcf_to_rqtl.py path_to_vcf.vcf Q G
+vcf_to_rqtl.py path_to_vcf.vcf "P" Q G
 where:
+P = comma-separated pair of prefixes identifying cross founder species/strains
+    for instance, if founding parents of strain "BW" are BW01, BW02, BW03
+    and founding parents of strain "PO" are PO01,PO02,PO03,
+    this paramter would be "BW,PO"
 Q = GATK "QD" score threshold for inclusion
 G = individual genotype call quality threshold
 
@@ -105,6 +109,7 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
             headers = line[1:].split()
             exp_elements = len(line.split())
             FORMAT = headers.index('FORMAT')
+
         elif line.startswith('#'):
             continue
         else:
@@ -298,16 +303,16 @@ def output_cross_radtag_genotypes(loci,genotypes,filename,lg0='X'):
 
 if __name__ == "__main__":
 
-    parent_str = 'BW,PO'
+    #parent_str = 'Ep,Ti'
     #qd = 6
     #gq = 20
     min_indiv = 50
     fh = 0.7
-    site_before = 32 #polymorphism must occur before this base in a fragment
+    site_before = 45 #polymorphism must occur before this base in a fragment
     #chi2crit = 30
     
     #vcfn,qd,gq,chi2crit = sys.argv[1:]
-    vcfn,qd,gq = sys.argv[1:]
+    vcfn,parent_str,qd,gq = sys.argv[1:]
     
     
     outbase = os.path.splitext(vcfn)[0]
@@ -327,7 +332,7 @@ if __name__ == "__main__":
     polarized_loci,polarized_geno = genotypes_by_parent(dict([(k,v) for k,v in pm.items() if int(k.split('.')[1]) < site_before]),gt,parents,remove_targets=reduce(lambda x,y: x+y,parents.values()))
 
     #chi2-free output:
-    ret = extract_genotypes_from_mclgr.output_cross_radtag_genotypes(polarized_loci,polarized_geno,'%s_QD%s-GQ%s_%sbp.csv' % (outbase,qd,gq,site_before))
+    ret = output_cross_radtag_genotypes(polarized_loci,polarized_geno,'%s_QD%s-GQ%s_%sbp.csv' % (outbase,qd,gq,site_before))
     
 
     """ #ditch chi2
