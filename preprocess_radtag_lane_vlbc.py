@@ -637,9 +637,9 @@ if __name__ == '__main__':
 
     adaptersversions = set([r['adaptersversion'] for r in indiv_data.values()])
     idxs = reduce(lambda x,y: x+y, [idxlookup[adver].values() for adver in adaptersversions])    
-    idxlen = len(indiv_data.keys()[0])
+    idxlen = set(map(len,indiv_data.keys()))
     line = next_read_from_fh(smartopen(r1),lnum)
-    readlen = len(line[-2]) - idxlen
+    readlen = len(line[-2]) #- idxlen
     print >> sys.stderr, '%s\n\t%s bp reads, %s / %s %s bp idxs used' % (r1,readlen,len(indiv_data),len(idxs),idxlen)
 
 
