@@ -62,6 +62,27 @@ def readcounts_from_uniqueds(uniqueds):
 
     return readcounts
 
+def rc_from_bam(bam,rc_bam=None):
+    from subprocess import Popen, PIPE
+    rg_lookup = {}
+    for l in Popen('samtools view -H %s  | grep "@RG"' % bam, shell=True,stdout=PIPE).stdout.readlines():
+        f = l.strip().split()
+        rg_lookup[f[1][3:]] = f[4][3:]
+    if rc_bam is None:
+        rc_bam = defaultdict(int)
+    for l in Popen('samtools view -F 0x0080 %s' % bam, shell=True,stdout=PIPE).stdout:
+        rc_bam[rg_lookup[[f for f in l.strip().split() if f.startswith('RG:Z')][0][5:]]] += 1
+    return rc_bam
+
+def readcounts_from_bams(bams):
+    readcounts = defaultdict(int)
+
+    for b in bams:
+        print >> sys.stderr, 'get counts for %s' % b
+        readcounts = rc_from_bam(b,readcounts)
+
+    return readcounts
+
 def readcounts_from_cl_lines(cl_lines):
     '''given a list of lines corresponding to a single cluster from a .cluni file
     returns a dictionary of readcounts for each individual in that cluster'''
