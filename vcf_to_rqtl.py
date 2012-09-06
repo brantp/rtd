@@ -80,6 +80,70 @@ def fract_het(indiv_gt):
 
     return (gts.count('0/1') + gts.count('0|1') + gts.count('1|0'))/float(len(gts))
 
+def load_vcf_header(vcfh):
+    '''given an open VCF file handle (that has not yet advanced past the header line)
+    returns the headers, number of expected elements, and position of FORMAT field'''
+
+    for line in vcfh:
+        if line.startswith('#CHROM'):
+            headers = line[1:].split()
+            exp_elements = len(line.split())
+            FORMAT = headers.index('FORMAT')
+            return (headers, exp_elements, FORMAT)
+    raise IOError, 'header not found; try zeroing vcfh position'
+
+def load_vcf_line(vcfh,headers,exp_elements,FORMAT,indiv_gt_phred_cut=None,store_indiv_prefix=None,drop_indiv=None,biallelic_sites=True,skip_noGQ=True):
+    line = vcfh.next()
+    fields = line.split()
+    if len(fields) != exp_elements:
+        print >>sys.stderr, 'unexpected length, line %s (exp %s obs %s)' % (i,exp_elements,len(fields))
+        return None
+
+    sd = dict(zip(headers[:FORMAT],fields[:FORMAT]))
+    key = (sd['CHROM'],sd['POS'])
+    try:
+        infostr = sd.pop('INFO')
+        sd.update(dict([el.split('=') for el in infostr.split(';') if '=' in el]))
+    except KeyError:
+        pass
+
+    if biallelic_sites is True:
+        if ',' in sd['ALT']:
+            return None
+
+    sd['indiv_gt'] = {}
+    for ind,gt in zip(headers[FORMAT+1:],fields[FORMAT+1:]):
+        if store_indiv_prefix is not None and not ind.startswith(store_indiv_prefix): continue
+        #drop_indiv HERE
+        if drop_indiv is not None and ind in drop_indiv: continue
+        if ':' in gt:
+            try:
+                this_gt = dict(zip(fields[FORMAT].split(':'),gt.split(':')))
+                if indiv_gt_phred_cut is None or float(this_gt['GQ']) >= indiv_gt_phred_cut:
+                    sd['indiv_gt'][ind] = this_gt
+            except:
+                if skip_noGQ:
+                    pass
+                else:
+                    print >> sys.stderr, 'parse failed for genotype string:\n\n',this_gt,'\n'
+                    raise
+
+    if len(sd['indiv_gt']) > 0: 
+        sd['hwe'] = hwe(sd['indiv_gt'])
+        sd['mac'] = maf(sd['indiv_gt'])
+        sd['maf'] = sd['mac'] / (2. * len(sd['indiv_gt']))
+        if sd['hwe'] is None:
+            sd['mafbyhwe'] = None
+        else:
+            sd['mafbyhwe'] = sd['maf'] / numpy.log1p(sd['hwe'])
+        sd['fh'] = fract_het(sd['indiv_gt'])
+        sd['totcov'] = sum([int(gtd['DP']) for gtd in sd['indiv_gt'].values()])
+        sd['numind'] = len(sd['indiv_gt'])
+    else:
+        return None
+
+    return sd
+
 def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cut=None,store_indiv_prefix=None,drop_indiv=None,biallelic_sites=True,skip_noGQ=True):
     '''populates and returns a site:properties dict from vcf file
 
@@ -92,6 +156,10 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
     vcf_data = {}
     
     i = 0
+
+    vcfh = open(vcf)
+    headers, exp_elements, FORMAT = load_vcf_header(vcfh)
+    
     for line in open(vcf):
         
         if i % ding_on == 0: print >> sys.stderr, 'reading',i
@@ -102,65 +170,13 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
             print >> sys.stderr, 'Null byte in line %s, skipping' % i
             continue
 
-        if line.startswith('#CHROM'):
-
-            headers = line[1:].split()
-            exp_elements = len(line.split())
-            FORMAT = headers.index('FORMAT')
-
-        elif line.startswith('#'):
+        if line.startswith('#'):
             continue
         else:
-            #extract site stats
-            fields = line.split()
-            if len(fields) != exp_elements:
-                print >>sys.stderr, 'unexpected length, line %s (exp %s obs %s)' % (i,exp_elements,len(fields))
+            sd = vcf_to_rqtl.load_vcf_line(vcfh,headers,exp_elements,FORMAT,indiv_gt_phred_cut,store_indiv_prefix,drop_indiv,biallelic_sites,skip_noGQ)
+            if sd is None:
                 continue
 
-            sd = dict(zip(headers[:FORMAT],fields[:FORMAT]))
-            key = (sd['CHROM'],sd['POS'])
-            try:
-                infostr = sd.pop('INFO')
-                sd.update(dict([el.split('=') for el in infostr.split(';') if '=' in el]))
-            except KeyError:
-                pass
-
-            if biallelic_sites is True:
-                if ',' in sd['ALT']:
-                    continue
-
-            sd['indiv_gt'] = {}
-            for ind,gt in zip(headers[FORMAT+1:],fields[FORMAT+1:]):
-                if store_indiv_prefix is not None and not ind.startswith(store_indiv_prefix): continue
-                #drop_indiv HERE
-                if drop_indiv is not None and ind in drop_indiv: continue
-                if ':' in gt:
-                    try:
-                        this_gt = dict(zip(fields[FORMAT].split(':'),gt.split(':')))
-                        if indiv_gt_phred_cut is None or float(this_gt['GQ']) >= indiv_gt_phred_cut:
-                            sd['indiv_gt'][ind] = this_gt
-                    except:
-                        if skip_noGQ:
-                            pass
-                        else:
-                            print >> sys.stderr, 'parse failed for genotype string:\n\n',this_gt,'\n'
-                            raise
-
-            if len(sd['indiv_gt']) > 0: 
-                sd['hwe'] = hwe(sd['indiv_gt'])
-                sd['mac'] = maf(sd['indiv_gt'])
-                sd['maf'] = sd['mac'] / (2. * len(sd['indiv_gt']))
-                if sd['hwe'] is None:
-                    sd['mafbyhwe'] = None
-                else:
-                    sd['mafbyhwe'] = sd['maf'] / numpy.log1p(sd['hwe'])
-                sd['fh'] = fract_het(sd['indiv_gt'])
-                sd['totcov'] = sum([int(gtd['DP']) for gtd in sd['indiv_gt'].values()])
-                sd['numind'] = len(sd['indiv_gt'])
-                
-            else:
-                continue #this is questionable -- ever want to proceed with a genotype-less site?
-                
             if cutoff_fn is None or cutoff_fn(sd):
                 if store_only is not None:
                     keep_sd = {}
