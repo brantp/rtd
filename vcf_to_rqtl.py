@@ -96,7 +96,10 @@ def load_vcf_header(vcfh):
     raise IOError, 'header not found; try zeroing vcfh position'
 
 def load_vcf_line(vcfh,headers,exp_elements,FORMAT,indiv_gt_phred_cut=None,store_indiv_prefix=None,drop_indiv=None,biallelic_sites=True,skip_noGQ=True):
-    line = vcfh.next()
+    line = vcfh.readline()
+    if len(line) == 0:
+        return 'EOF'
+    
     fields = line.split()
     if len(fields) != exp_elements:
         print >>sys.stderr, 'unexpected length, line %s (exp %s obs %s)' % (i,exp_elements,len(fields))
@@ -163,7 +166,7 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
     vcfh = open(vcf)
     headers, exp_elements, FORMAT = load_vcf_header(vcfh)
     
-    for line in open(vcf):
+    while 1:
         
         if i % ding_on == 0: print >> sys.stderr, 'reading',i
         i += 1
@@ -179,6 +182,8 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
             sd = load_vcf_line(vcfh,headers,exp_elements,FORMAT,indiv_gt_phred_cut,store_indiv_prefix,drop_indiv,biallelic_sites,skip_noGQ)
             if sd is None:
                 continue
+            elif sd == 'EOF':
+                break
             key = (sd['CHROM'],sd['POS'])
             if cutoff_fn is None or cutoff_fn(sd):
                 if store_only is not None:
