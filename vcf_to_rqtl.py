@@ -176,10 +176,10 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
         if line.startswith('#'):
             continue
         else:
-            sd = vcf_to_rqtl.load_vcf_line(vcfh,headers,exp_elements,FORMAT,indiv_gt_phred_cut,store_indiv_prefix,drop_indiv,biallelic_sites,skip_noGQ)
+            sd = load_vcf_line(vcfh,headers,exp_elements,FORMAT,indiv_gt_phred_cut,store_indiv_prefix,drop_indiv,biallelic_sites,skip_noGQ)
             if sd is None:
                 continue
-
+            key = (sd['CHROM'],sd['POS'])
             if cutoff_fn is None or cutoff_fn(sd):
                 if store_only is not None:
                     keep_sd = {}
