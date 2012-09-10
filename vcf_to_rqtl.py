@@ -87,7 +87,8 @@ def load_vcf_header(vcfh):
     '''given an open VCF file handle (that has not yet advanced past the header line)
     returns the headers, number of expected elements, and position of FORMAT field'''
 
-    for line in vcfh:
+    while 1:
+        line = vcfh.readline()
         if line.startswith('#CHROM'):
             headers = line[1:].split()
             exp_elements = len(line.split())
