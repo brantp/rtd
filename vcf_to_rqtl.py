@@ -151,6 +151,14 @@ def load_vcf_line(vcfh,headers,exp_elements,FORMAT,indiv_gt_phred_cut=None,store
 
     return sd
 
+def load_valid_vcf_line(vcfh,headers,exp_elements,FORMAT,indiv_gt_phred_cut=None,store_indiv_prefix=None,drop_indiv=None,biallelic_sites=True,skip_noGQ=True):
+    while 1:
+        sd = load_vcf_line(vcfh,headers,exp_elements,FORMAT,indiv_gt_phred_cut,store_indiv_prefix,drop_indiv,biallelic_sites,skip_noGQ)
+        if sd == 'EOF':
+            return None
+        elif sd is not None:
+            return sd
+
 def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cut=None,store_indiv_prefix=None,drop_indiv=None,biallelic_sites=True,skip_noGQ=True):
     '''populates and returns a site:properties dict from vcf file
 
