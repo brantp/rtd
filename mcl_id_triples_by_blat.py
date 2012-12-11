@@ -7,7 +7,7 @@ ALL SEQUENCE HEADERS MUST BEGIN WITH A UNIQUE INTEGER ID FOLLOWED BY A PERIOD
 
 '''
 
-import os, sys, re
+import os, sys, re, numpy
 from config import SCRATCH as scratch
 
 keep_blat = False
@@ -33,7 +33,11 @@ def space_free_on_volume(vol,unit='M',verbose=False):
     from subprocess import Popen,PIPE
     if verbose:
         print >> sys.stderr, 'checking free space on volume %s ...' % vol,
-    free = int(Popen('df -P --sync -B %s %s' % (unit,vol), shell=True, stdout=PIPE).stdout.readlines()[-1].strip().split()[3].rstrip(unit))
+    try:
+        free = int(Popen('df -P --sync -B %s %s' % (unit,vol), shell=True, stdout=PIPE).stdout.readlines()[-1].strip().split()[3].rstrip(unit))
+    except:
+        print >> sys.stderr, 'free space check failed; proceeding.  MONITOR AVAILABLE SPACE ON %s' % vol
+        free = numpy.inf
     if verbose:
         print >> sys.stderr, '%s %sB' % (free,unit)
     return free
