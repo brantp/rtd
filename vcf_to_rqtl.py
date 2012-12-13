@@ -180,29 +180,21 @@ def load_vcf(vcf,cutoff_fn=None,ding_on=100000,store_only=None,indiv_gt_phred_cu
         if i % ding_on == 0: print >> sys.stderr, 'reading',i
         i += 1
 
-        #skip bogus lines -- probably want to warn on this somehow...
-        if '\x00' in line:
-            print >> sys.stderr, 'Null byte in line %s, skipping' % i
+        sd = load_vcf_line(vcfh,headers,exp_elements,FORMAT,indiv_gt_phred_cut,store_indiv_prefix,drop_indiv,biallelic_sites,skip_noGQ)
+        if sd is None:
             continue
-
-        if line.startswith('#'):
-            continue
-        else:
-            sd = load_vcf_line(vcfh,headers,exp_elements,FORMAT,indiv_gt_phred_cut,store_indiv_prefix,drop_indiv,biallelic_sites,skip_noGQ)
-            if sd is None:
-                continue
-            elif sd == 'EOF':
-                break
-            key = (sd['CHROM'],sd['POS'])
-            if cutoff_fn is None or cutoff_fn(sd):
-                if store_only is not None:
-                    keep_sd = {}
-                    for k in sd:
-                        if k in store_only:
-                            keep_sd[k] = sd[k]
-                    sd = keep_sd
-                if len(sd) > 0:
-                    vcf_data[key] = sd
+        elif sd == 'EOF':
+            break
+        key = (sd['CHROM'],sd['POS'])
+        if cutoff_fn is None or cutoff_fn(sd):
+            if store_only is not None:
+                keep_sd = {}
+                for k in sd:
+                    if k in store_only:
+                        keep_sd[k] = sd[k]
+                sd = keep_sd
+            if len(sd) > 0:
+                vcf_data[key] = sd
 
     return vcf_data
 
