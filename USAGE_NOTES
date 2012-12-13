@@ -64,6 +64,9 @@ Finally, note that the first sample had no index; this is fine, this
 just means we didn't do illumina-style "third read" multiplexing for
 that sample, whereas for the second example we did (using index #11)
 
+Example data for DB_library_data can be found at:
+https://docs.google.com/spreadsheet/ccc?key=0AnHEwF1NpAxDdFlXRXliTElXQzF6dkswZk5HenlTclE
+
 - RUN preprocess_radtag_lane.py
 
 we start with the s_X_[1|2]_sequence[_indexZ].txt[.gz]
