@@ -39,8 +39,18 @@ from editdist import distance
 from glob import glob
 from copy import deepcopy
 
-import os, sys, re, numpy
+import os, sys, re, numpy, gzip
 import gdata.spreadsheet.service
+
+def cat(filelist,targetfile):
+    '''cats an arbitrarily large filelist to targetfile'''
+    fh = smartopen(targetfile,'w')
+    print >> sys.stderr, '\n'
+    for i,f in enumerate(filelist):
+        print >> sys.stderr, '\r%s / %s' % (i,len(filelist)),
+        for l in open(f):
+            fh.write(l)
+    fh.close()
 
 def load_uniqued(all_quality,uniqued,readlen=None,nticks=20,baseQ=None):
     '''given a .uniqued file produced by preprocess_radtag_lane.py
@@ -214,42 +224,50 @@ def make_similarity_calc_inputs(unifiles,set_mincycles,nticks,cutsite,mIDfile,su
     del(all_quality)
 
 
-def run_lsf_blat(subjects,queries,blattile,blatargstr='',num_batches=100):
+def run_lsf_blat(subjects,queries,blattile,blatargstr='',num_batches=100,queue='normal_serial'):
     '''submits mcl_id_triples_by_blat.py jobs to LSF
 
     intended as an example of parallelization over a compute grid;
     uses a module LSF.py for interaction with scheduler
 
     '''
-    import LSF
+    import LSF,run_safe
     
     blatargstr += ' -tileSize=%s' % blattile
     blatargstr += ' -stepSize=%s' % (int(blattile)/2)
 
-    cmds = []
+    #cmds = []
     labf = []
+    to_run_dict = {}
     for q in queries:
         for subject in subjects:
             subjname = os.path.basename(subject).rstrip('.fa').rstrip('_subj')
             outbase = q.rstrip('.fa').rstrip('_query')+'_blat'+'-subj'+subjname+blatargstr.replace('=','').replace(' ','')
-            labf.append(outbase+'.label')
-            cmds.append('%smcl_id_triples_by_blat.py %s %s \\"%s\\" %s' % (radtag_denovo,subject,q,blatargstr,outbase))
+            labf.append(outbase+'.label.gz')
+            # ESCAPES UNNECESSARY WITH safe_script  
+            #cmds.append('%smcl_id_triples_by_blat.py %s %s \\"%s\\" %s' % (radtag_denovo,subject,q,blatargstr,outbase))
+            cmd = '%smcl_id_triples_by_blat.py %s %s "%s" %s' % (radtag_denovo,subject,q,blatargstr,outbase)
+            to_run_dict[outbase] = run_safe.safe_script(cmd,outbase)
 
-    logfile = os.path.join(os.path.dirname(subjects[0]),'blat-log')
-    logfiles = glob(logfile+'*.lsflog')
-    for lf in logfiles:
-        try:
-            os.unlink(lf)
-        except:
-            pass
+
+    logfile = os.path.join(os.path.dirname(subjects[0]),'blat-log/blat-log')
+    LSF.lsf_run_until_done(to_run_dict, logfile, queue, '-R "select[mem > 20000]"', 'blat2mat', num_batches, 3)
+
+    # REPLACED BY lsf_run_until_done ABOVE
+    #logfiles = glob(logfile+'*.lsflog')
+    #for lf in logfiles:
+    #    try:
+    #        os.unlink(lf)
+    #    except:
+    #        pass
     #print >> sys.stderr, 'LSF %s\nlog: %s' % (cmds,logfile)
-    import time
-    while len(cmds) > 0:
-        jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,'normal_serial',bsub_flags='-R "select[mem > 20000]"',jobname_base='blat2mat',num_batches=num_batches)
-        time.sleep(20)
-        LSF.lsf_wait_for_jobs(jobids,logfile,namedict=namedict)
-        logfiles = glob(logfile+'*.lsflog')
-        cmds = reduce(lambda x,y:x+y, [LSF.lsf_no_success_from_log(lf) for lf in logfiles])
+    #import time
+    #while len(cmds) > 0:
+    #    jobids,namedict = LSF.lsf_jobs_submit(cmds,logfile,'normal_serial',bsub_flags='-R "select[mem > 20000]"',jobname_base='blat2mat',num_batches=num_batches)
+    #    time.sleep(20)
+    #    LSF.lsf_wait_for_jobs(jobids,logfile,namedict=namedict)
+    #    logfiles = glob(logfile+'*.lsflog')
+    #    cmds = reduce(lambda x,y:x+y, [LSF.lsf_no_success_from_log(lf) for lf in logfiles])
 
     if not all([os.path.exists(f) for f in labf]):
         raise OSError, 'blat failed'
@@ -271,8 +289,9 @@ def run_local_blat(subjects,queries,blattile,blatargstr='',num_cores=1):
         for subject in subjects:
             subjname = os.path.basename(subject).rstrip('.fa').rstrip('_subj')
             outbase = q.rstrip('.fa').rstrip('_query')+'_blat'+'-subj'+subjname+blatargstr.replace('=','').replace(' ','')
-            labf.append(outbase+'.label')
-            cmds.append('%smcl_id_triples_by_blat.py %s %s "%s" %s' % (radtag_denovo,subject,q,blatargstr,outbase))
+            labf.append(outbase+'.label.gz')
+            cmd = '%smcl_id_triples_by_blat.py %s %s "%s" %s' % (radtag_denovo,subject,q,blatargstr,outbase)
+            cmds.append(run_safe.safe_script(cmd,outbase))
 
     shscr = os.path.join(os.path.dirname(subjects[0]) , 'runblat.sh')
     smartopen(shscr, 'w').writelines([cmd+';\n' for cmd in cmds])
@@ -297,8 +316,9 @@ def run_parallel_blat(subjects,queries,blattile,blatargstr='',num_cores='+0'):
         for subject in subjects:
             subjname = os.path.basename(subject).rstrip('.fa').rstrip('_subj')
             outbase = q.rstrip('.fa').rstrip('_query')+'_blat'+'-subj'+subjname+blatargstr.replace('=','').replace(' ','')
-            labf.append(outbase+'.label')
-            cmds.append('%smcl_id_triples_by_blat.py %s %s "%s" %s' % (radtag_denovo,subject,q,blatargstr,outbase))
+            labf.append(outbase+'.label.gz')
+            cmd = '%smcl_id_triples_by_blat.py %s %s "%s" %s' % (radtag_denovo,subject,q,blatargstr,outbase)
+            cmds.append(run_safe.safe_script(cmd,outbase))
 
     shscr = os.path.join(os.path.dirname(subjects[0]) , 'runblat.sh')
     smartopen(shscr, 'w').writelines([cmd+';\n' for cmd in cmds])
@@ -427,9 +447,11 @@ if __name__ == '__main__':
     outprefix += '_l%s' % minlen
 
     labelfile = outprefix + '_all.label'
+    labdonefile = labelfile + '.done'
     
     matfile = outprefix + '.mat'
     tabfile = outprefix + '.tab'
+    matdonefile = matfile + '.done'
 
     outprefix += '_l%s_mcl_I%0.1f' % (minlen,opts.mclradius)
     
@@ -473,8 +495,9 @@ if __name__ == '__main__':
     # skip loads if relevant files already exist
     if not os.path.exists(clunifile):
         if not os.path.exists(grfile):
-            if not (os.path.exists(matfile) and os.path.exists(tabfile)):
-                if not os.path.exists(labelfile):
+            if not (os.path.exists(matfile) and os.path.exists(tabfile) and os.path.exists(matdonefile)):
+                if not (os.path.exists(labelfile) and os.path.exists(labdonefile)): #back to concat; testing 20130103
+                #if 1: # concatenated label file no longer generated; hardcoded for now
                     if not (os.path.exists(mIDfile) and all([os.path.exists(subj) for subj in subjects]) and all([os.path.exists(query) for query in queries])):
                         # make similarity calc inputs
                         make_similarity_calc_inputs(infiles,set_mincycles,nticks,cutsite,mIDfile,subjects,queries)
@@ -484,20 +507,34 @@ if __name__ == '__main__':
                     print >> sys.stderr, 'generate labels %s by %s' % (labelfile,match_engine)
                     labf = run_match(opts.match_engine,opts.parallel_engine,opts.ncores,subjects,queries,minlen,blatargstr)
 
+                    # BACK TO CONCAT LABELS # concatenate replaced by 
                     print >> sys.stderr, 'match complete, concatenate...',
-                    catcmd = 'cat %s > %s' % (' '.join(labf), labelfile)
-                    ret = os.system(catcmd)
-                    if ret != 0:
-                        raise OSError, 'cat failed with code %s\n%s' % (ret,catcmd)
-
-                    print >> sys.stderr, 'done'
+                    cat(labf,labelfile)
+                    
+                    print >> sys.stderr, 'labels done'
+                    os.system('touch %s' % labdonefile)
                 else:
                     print >> sys.stderr, 'using labels %s' % labelfile
                 # make matrix
                 print >> sys.stderr, 'Write matrix for clustering'
-                ret = os.system('mcxload -abc %s -o %s -write-tab %s' % (labelfile,matfile,tabfile))
+                
+                # BACK TO CONCAT LABELS # no longer using concatenated label file
+                ret = os.system('mcxload -abc %s -o %s -write-tab %s' % (labelfile,matfile,tabfile))                
+
+                # BACK TO CONCAT LABELS 20120103
+                #mcxload_ps = Popen('mcxload -abc - -o %s -write-tab %s' % (matfile,tabfile),shell=True,bufsize=1,stdin=PIPE)
+                #for lf in labf:
+                #    lfh = gzip.open(lf)
+                #    for l in lfh:
+                #        mcxload_ps.stdin.write(l)
+                #mcxload_ps.communicate()
+                #ret = mcxload_ps.returncode
+                # /NO LABELS
+                
                 if ret != 0:
                     raise OSError, 'mcxload failed with code %s' % ret
+                
+                ret = os.system('touch %s' % matdonefile)
 
             else:
                 print >> sys.stderr, '%s and %s present, using' % (matfile,tabfile)

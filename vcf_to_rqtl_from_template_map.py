@@ -10,6 +10,7 @@ gq = 20
 
 from short_read_analysis import variant_detection
 from short_read_analysis import extract_genotypes_from_mclgr
+import preprocess_radtag_lane
 
 def load_vcf(vcf,allele_map,indiv_gt_phred_cut=None,ding_on=100000,return_map=False):
 	'''processes a vcf file, adding genotypes satisfying GQ cutoff indiv_gt_phred_cut to a returned cross genotype object
@@ -22,7 +23,7 @@ def load_vcf(vcf,allele_map,indiv_gt_phred_cut=None,ding_on=100000,return_map=Fa
 		vcf_data = {}
 	
 	i = 0
-	for line in open(vcf):
+	for line in preprocess_radtag_lane.smartopen(vcf):
 		if i % ding_on == 0: print >> sys.stderr, 'reading',i
 		i += 1
 
@@ -67,9 +68,9 @@ def load_vcf(vcf,allele_map,indiv_gt_phred_cut=None,ding_on=100000,return_map=Fa
 			#populate individual genotype metrics provided each GQ >= indiv_gt_phred_cut if defined
 			sd['indiv_gt'] = {}
 			for ind,gt in zip(headers[FORMAT+1:],fields[FORMAT+1:]):
-				if ':' in gt:
+				if not gt.startswith('./.') and ':' in gt:
 					this_gt = dict(zip(fields[FORMAT].split(':'),gt.split(':')))
-					if indiv_gt_phred_cut is None or float(this_gt['GQ']) >= indiv_gt_phred_cut:
+					if indiv_gt_phred_cut is None or float(this_gt['GQ'] != '.' and this_gt['GQ'] or '0') >= indiv_gt_phred_cut:
 						sd['indiv_gt'][ind] = this_gt
 						if return_map:
 							new_map[ind].update({loc:''.join([allele_map[loc][n] for n in sd['indiv_gt'][ind]['GT'].split('/')])})

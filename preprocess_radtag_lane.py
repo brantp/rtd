@@ -129,23 +129,43 @@ def get_spreadsheet_key(target_sheet,gd_client=None):
 
     return key,gd_client
 
-def get_table_as_dict(target_sheet,sq=None,gd_client=None,suppress_fc_check=False):
+def get_worksheet_key(target_worksheet,sheet_key,gd_client):
+    feed = gd_client.GetWorksheetsFeed(sheet_key)
+    key = [entry.id.text.rsplit('/', 1)[1] for entry in feed.entry if entry.title.text == target_worksheet][0]
 
+    return key,gd_client
+
+def get_all_worksheet_names(sheet_key,gd_client):
+    feed = gd_client.GetWorksheetsFeed(sheet_key)
+    names = [entry.title.text for entry in feed.entry]
+    return names,gd_client
+
+def get_table_as_dict(target_sheet,sq=None,gd_client=None,suppress_fc_check=False,target_worksheet=None):
     key,gd_client = get_spreadsheet_key(target_sheet,gd_client)
+    if target_worksheet is None:
+        names = get_all_worksheet_names(key,gd_client)[0]
+        recs = []
+        for sheet_name in names:
+            print >> sys.stderr, 'add %s' % sheet_name
+            recs.extend(get_table_as_dict(target_sheet,sq=sq,gd_client=gd_client,suppress_fc_check=suppress_fc_check,target_worksheet=sheet_name))
+        return recs
+    else:
+        wskey,gd_client = get_worksheet_key(target_worksheet,key,gd_client)
     if sq is not None:
         q = gdata.spreadsheet.service.ListQuery()
         q.sq = sq
-        feed = gd_client.GetListFeed(key,query=q)
+        feed = gd_client.GetListFeed(key,wskey,query=q)
     else:
-        feed = gd_client.GetListFeed(key)
-
+        feed = gd_client.GetListFeed(key,wskey)
     recs = []
     for entry in feed.entry:
         #d = []
 	#for el in entry.content.text.split(','):
-	    
+	#print entry.content.ToString()
         try:
-	    recs.append(dict(re.findall('(.+?):\s(.+?)(?:(?:,\s)|$)',entry.content.text)))
+	    #recs.append(dict(re.findall('([\d\w_-]+?):\s(.+?)(?:(?:,\s)|$)',entry.content.text)))
+            l = [m.strip(' ,:') for m in re.split('([^\s]+?:\s)',entry.content.text) if m]
+            recs.append(dict(zip(l[::2],l[1::2])))
 	    if not suppress_fc_check and not all([k in recs[-1].keys() for k in ['flowcell','lane','pool']]):
 	        print >> sys.stderr, 'missing keys:', dict(re.findall('(.+?):\s(.+?)(?:(?:,\s)|$)',entry.content.text))
 	        print >> sys.stderr, 'line was:\n',entry.content.text
@@ -189,37 +209,47 @@ def get_individual_data_for_lane(filename=None,idxlookup=None,fc=None,lane=None,
         lane = os.path.basename(filename)[2]
         #print >> sys.stderr, fc,lane,idxlookup
         fbase = os.path.basename(filename)
-
-        key,gd_client = get_spreadsheet_key(LIBRARY_DATA)
-
-        q = gdata.spreadsheet.service.ListQuery()
+        #
+        #key,gd_client = get_spreadsheet_key(LIBRARY_DATA)
+        #
+        #q = gdata.spreadsheet.service.ListQuery()
+        #
         if 'index' in fbase:
-    	    q.sq = 'flowcell="%s" and lane="%s" and index="%s"' % (fc,lane,fbase.split('index')[-1].split('.')[0])
+        #    q.sq = 'flowcell="%s" and lane="%s" and index="%s"' % (fc,lane,fbase.split('index')[-1].split('.')[0])
+            sq = 'flowcell="%s" and lane="%s" and index="%s"' % (fc,lane,fbase.split('index')[-1].split('.')[0])
         else:
-    	    q.sq = 'flowcell="%s" and lane="%s"' % (fc,lane)
+    	#    q.sq = 'flowcell="%s" and lane="%s"' % (fc,lane)
+            sq = 'flowcell="%s" and lane="%s"' % (fc,lane)
     else:
-        key,gd_client = get_spreadsheet_key(LIBRARY_DATA)
-
-        q = gdata.spreadsheet.service.ListQuery()
+        #key,gd_client = get_spreadsheet_key(LIBRARY_DATA)
+        #
+        #q = gdata.spreadsheet.service.ListQuery()
         if index is not None:
-            q.sq = 'flowcell="%s" and lane="%s" and index="%s"' % (fc,lane,index)
+        #    q.sq = 'flowcell="%s" and lane="%s" and index="%s"' % (fc,lane,index)
+            sq = 'flowcell="%s" and lane="%s" and index="%s"' % (fc,lane,index)
         else:
-            q.sq = 'flowcell="%s" and lane="%s"' % (fc,lane)
+        #    q.sq = 'flowcell="%s" and lane="%s"' % (fc,lane)
+            sq = 'flowcell="%s" and lane="%s"' % (fc,lane)
 
 
 
-    feed = gd_client.GetListFeed(key,query=q)
-
-    recs = []
-    for entry in feed.entry:
-        tl = [[st.strip() for st in el.split(':')] for el in entry.content.text.split(',')]
-        try:
-            recs.append(dict(tl))
-        except:
-            print >> sys.stderr, 'tuple list did not parse:\n\t%s' % tl
+    #feed = gd_client.GetListFeed(key,query=q)
+    #
+    #recs = []
+    #
+    #for entry in feed.entry:
+    #    tl = [[st.strip() for st in el.split(':')] for el in entry.content.text.split(',')]
+    #    try:
+    #        recs.append(dict(tl))
+    #    except:
+    #        print >> sys.stderr, 'tuple list did not parse:\n\t%s' % tl
 
     #recs = [dict([[st.strip() for st in el.split(':')] for el in entry.content.text.split(',')]) for entry in feed.entry]
-    print >> sys.stderr, "%s records found for %s" % (len(recs), q.sq)
+
+    #try with table_as_dict
+    recs = get_table_as_dict(LIBRARY_DATA,sq=sq)
+
+    print >> sys.stderr, "%s records found for %s" % (len(recs), sq)
     adaptersversions = set([r['adaptersversion'] for r in recs])
     print >> sys.stderr, "adapters used: %s" % adaptersversions
     idxs = reduce(lambda x,y: x+y, [idxlookup[adver].values() for adver in adaptersversions])
@@ -441,6 +471,24 @@ def assign_read_to_indiv(line,indiv_data,mismatch_allowed=1, \
 
         qual = numpy.array(qual,dtype=int)
     return indiv,read,qual
+
+def get_fastq_properties(fq):
+    fh = smartopen(fq)
+    chr1 = fh.readline()[0]
+    if chr1 == '@':
+        lnum = 4
+        print >> sys.stderr, 'using 4-line fastq'
+    else:
+        lnum = 1
+        print >> sys.stderr, 'using 1-line fastq'
+
+    baseQ = None
+    qfh = smartopen(fq)
+    while baseQ is None:
+        baseQ = get_baseQ(next_read_from_fh(qfh,lnum)[2])
+    qfh.close()
+    print >> sys.stderr, 'using quality encoding base-%s' % baseQ
+    return lnum,baseQ
 
 def next_read_from_fh(fh,lnum=None):
 

@@ -177,7 +177,7 @@ def lsf_jobs_submit(cmds,outfile,queue='short_serial',bsub_flags='',jobname_base
             except OSError:
                 pass
 
-            open(sh_name,'w').write('#!/usr/bin/env sh\n'+execstr.replace('\\"','"'))
+            open(sh_name,'w').write('#!/usr/bin/env sh\nset -e\n'+execstr.replace('\\"','"'))
             os.system('chmod +x '+sh_name)
             execstr = sh_name
             
@@ -283,6 +283,31 @@ def lsf_wait_for_jobs(jobids,restart_outfile=None,restart_queue='normal_serial',
                         sys.stderr.flush()
         print >> sys.stderr, '\ncompleted iteration in',str(datetime.timedelta(seconds=int(time.time() - t)))
 
+def lsf_run_until_done(to_run_dict,logfile,queue,bsub_flags,jobname_base,num_batches,MAX_RETRY):
+    from run_safe import unfinished_cmds
+    cmds = unfinished_cmds(to_run_dict)
+
+    retries = 0
+    last_cmds = []
+    while len(cmds) > 0:
+        print >> sys.stderr, '%s: %s cmds to run in %s batches on queue %s, logs in %s' % (jobname_base,len(cmds),num_batches,queue,logfile)
+        #code to halt execution on recurrent errors
+        if set(last_cmds) == set(cmds):
+            if retries > MAX_RETRY:
+                errstr = 'maximum number of retry attempts (%s) exceeded with identical jobs lists.  Check logs (%s) for recurrent errors' % (MAX_RETRY,logfile)
+                raise IOError, errstr
+            else:
+                retries += 1
+        last_cmds = cmds
+
+        jobids,namedict = lsf_jobs_submit(cmds,logfile,queue,bsub_flags,jobname_base=jobname_base,num_batches=num_batches)
+        time.sleep(20)
+        lsf_wait_for_jobs(jobids,logfile,namedict=namedict)
+
+        cmds = unfinished_cmds(to_run_dict)
+    print >> sys.stderr, 'DONE\n'
+
+
 def lsf_kill_jobs(jobids):
     if isinstance(jobids,dict):
         kills = jobids.keys()
@@ -322,8 +347,8 @@ def lsf_restart_jobs(jobids,keep_prereqs=True,return_kills=False):
             restartnames.update(ndict)
         except KeyError:
             kills_skip.append(j)
-
-    print >> sys.stderr, 'no restart data available for %s; not killed' % kills_skip
+    if kills_skip:
+        print >> sys.stderr, 'no restart data available for %s; not killed' % kills_skip
     lsf_kill_jobs(kills_finish)
 
     if return_kills:

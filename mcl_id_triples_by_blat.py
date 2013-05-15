@@ -7,12 +7,14 @@ ALL SEQUENCE HEADERS MUST BEGIN WITH A UNIQUE INTEGER ID FOLLOWED BY A PERIOD
 
 '''
 
-import os, sys, re
+import os, sys, re, gzip
 from config import SCRATCH as scratch
 
+fail_to_local = False #must set to "True" to allow use of working directory for blat output
+                      #note that this can result in large .blat files on shared volumes!
 keep_blat = False
 pct_id_cut = 0.8
-min_space_on_scratch = 100000 #in mb
+min_space_on_scratch = 100000 #in mb; fail if less than this amount of free space
 
 def splitpath_rec(path, maxdepth=20):
      ( head, tail ) = os.path.split(path)
@@ -43,10 +45,18 @@ if __name__ == '__main__':
 
     scratch_space = space_free_on_volume(splitpath(scratch)[0],verbose=True)
     if keep_blat:
-        outf = outbase+'.blat'
+        if fail_to_local:
+             outf = outbase+'.blat'
+        else:
+             print >> sys.stderr, 'working directory failover not allowed'
+             raise OSError, 'no space for blat output'
     elif scratch_space < min_space_on_scratch:
         print >> sys.stderr, 'available space on scratch (%s MB) is less than specified minimum (%s MB); use working directory' % ( scratch_space,min_space_on_scratch)
-        outf = outbase+'.blat'
+        if fail_to_local:
+             outf = outbase+'.blat'
+        else:
+             print >> sys.stderr, 'working directory failover not allowed'
+             raise OSError, 'no space for blat output'
     else:
         try:
             os.makedirs(scratch)
@@ -59,7 +69,7 @@ if __name__ == '__main__':
         else:
             os.unlink(outf)
 
-    matf = outbase+'.label'
+    matf = outbase+'.label.gz'
 
     if os.path.exists(matf):
         print >> sys.stderr, 'output %s already present' % matf
@@ -72,7 +82,7 @@ if __name__ == '__main__':
         raise OSError, 'blat failed; exit'
 
     print >> sys.stderr, 'process blat output %s (%s bytes)' % (outf,os.path.getsize(outf))
-    matfh = open(matf,'w')
+    matfh = gzip.open(matf,'w')
     for l in open(outf):
         fields = l.strip().split()
         try:
