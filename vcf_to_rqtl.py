@@ -323,6 +323,382 @@ def output_cross_radtag_genotypes(loci,genotypes,filename,lg0='X'):
     return out_geno,mID_lookup
 
 
+#other output methods
+def write_structure_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_write = None):
+    '''given a parsed vcf data structure per load_vcf and an outfile name
+
+    prints a structure-formatted genotype file.
+
+    if keys_to_write is supplied, only vcf_data items corresponding to those keys will be written
+    '''
+
+    if keys_to_write is None:
+        keys_to_write = vcf_data.keys()
+
+    keys_to_write.sort(key = lambda x: (x[0],int(x[1])))
+
+    if indiv_to_write is None:
+        indiv_to_write = set()
+        for k in keys_to_write:
+            v = vcf_data[k]
+            indiv_to_write = indiv_to_write.union(set(v['indiv_gt'].keys()))
+        indiv_to_write = sorted(list(indiv_to_write))
+
+    ofh = open(outfile,'w')
+    ofh.write('\t'.join(['%s.%s' % (c,p) for c,p in keys_to_write]))
+    ofh.write('\n')
+
+    for ind in indiv_to_write:
+        ofh.write(ind)
+        for k in keys_to_write:
+            try:
+                ofh.write('\t'+(vcf_data[k]['indiv_gt'][ind]['GT'].replace('/',' ')))
+            except KeyError:
+                ofh.write('\t-9 -9')
+        ofh.write('\n')
+
+    ofh.close()
+
+        
+def write_spagedi_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_write = None):
+    '''generates output intended for SPAGeDi
+
+    currently treats all individuals as originating from a single population;
+    this will need to be elaborated upon
+    '''
+
+    from short_read_analysis import preprocess_radtag_lane
+    lookup = dict([(l['sampleid'],l['population']) for l in preprocess_radtag_lane.get_table_as_dict('DB_library_data') if l.has_key('population')])
+
+    if keys_to_write is None:
+        keys_to_write = vcf_data.keys()
+
+    keys_to_write.sort(key = lambda x: (x[0],int(x[1])))
+
+    if indiv_to_write is None:
+        indiv_to_write = set()
+        for k in keys_to_write:
+            v = vcf_data[k]
+            indiv_to_write = indiv_to_write.union(set(v['indiv_gt'].keys()))
+        indiv_to_write = sorted(list(indiv_to_write))
+
+    ofh = open(outfile,'w')
+    #write header
+    ofh.write('%s\t1\t0\t%s\t1\t2\n0\nInd\tPop\t%s\n' % \
+              (len(indiv_to_write),len(keys_to_write), '\t'.join(['%s.%s' % (c,p) for c,p in keys_to_write])))
+
+    #write genotypes
+    for ind in indiv_to_write:
+        ofh.write('%s\t%s' % (ind,lookup.get(ind,'pop1')))
+        for k in keys_to_write:
+            try:
+                gt = '/'.join([str(int(i)+1) for i in vcf_data[k]['indiv_gt'][ind]['GT'].split('/')])
+                ofh.write('\t'+gt)
+            except KeyError:
+                ofh.write('\t0/0')
+        ofh.write('\n')
+
+    ofh.write('END\n')
+    ofh.close()
+    
+
+def write_tassel_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_write = None):
+    '''given vcf_data per load_vcf above and an outfile name
+
+    writes tassel input format'''
+
+    xd = { '0':'REF','1':'ALT' }
+
+    if keys_to_write is None:
+        keys_to_write = vcf_data.keys()
+
+    keys_to_write.sort(key = lambda x: (x[0],int(x[1])))
+
+    if indiv_to_write is None:
+        indiv_to_write = set()
+        for k in keys_to_write:
+            v = vcf_data[k]
+            indiv_to_write = indiv_to_write.union(set(v['indiv_gt'].keys()))
+        indiv_to_write = sorted(list(indiv_to_write))
+
+    ofh = open(outfile,'w')
+
+    ofh.write('%s\t%s:%s\n' % (len(indiv_to_write),len(keys_to_write),'2'))
+    if len(set([c for c,p in keys_to_write])) == 1:
+        ofh.write('%s\n' % '\t'.join([p for c,p in keys_to_write]))
+    else:
+        ofh.write('%s\n' % '\t'.join(['%s.%s' % (c,p) for c,p in keys_to_write]))
+
+    for ind in indiv_to_write:
+        ofh.write('%s' % ind)
+        for k in keys_to_write:
+            try:
+                gt = ':'.join([vcf_data[k][xd[i]] for i in vcf_data[k]['indiv_gt'][ind]['GT'].split('/')])
+            except:
+                gt = '?:?'
+            ofh.write('\t' + gt)
+        ofh.write('\n')
+
+    ofh.close()
+    
+def write_plink_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_write = None):
+
+    if keys_to_write is None:
+        keys_to_write = vcf_data.keys()
+
+    keys_to_write.sort(key = lambda x: (x[0],int(x[1])))
+
+    if indiv_to_write is None:
+        indiv_to_write = set()
+        for k in keys_to_write:
+            v = vcf_data[k]
+            indiv_to_write = indiv_to_write.union(set(v['indiv_gt'].keys()))
+        indiv_to_write = sorted(list(indiv_to_write))
+
+    ofh = open(outfile,'w')
+
+    idx = 0
+    for ind in indiv_to_write:
+        idx += 1
+        ofh.write('FAM%s\t%s\t0\t0\t1\t0' % (idx,ind))
+        for k in keys_to_write:
+            try:
+                gt = ' '.join([str(int(i)+1) for i in vcf_data[k]['indiv_gt'][ind]['GT'].split('/')])
+            except:
+                gt = '0 0'
+            ofh.write('\t' + gt)
+        ofh.write('\n')
+
+    ofh.close()
+
+    mapout = os.path.splitext(outfile)[0] + '.map'
+    ofh = open(mapout,'w')
+    infout = open(outfile + '.info','w')
+    
+    chrom_translation = dict([(k,i+1) for i,k in enumerate(set([k[0] for k in keys_to_write]))])
+    open(mapout+'.xlat','w').write('\n'.join(['%s\t%s' % (k,v) for k, v in chrom_translation.items()]))
+
+    for k in keys_to_write:
+        ofh.write('%s\t%s.%s\t%s\t%s\n' % (chrom_translation[k[0]], k[0], k[1], 0, k[1]))
+        infout.write('%s\t%s\n' % (k[1],k[1]))
+
+    ofh.close()
+    infout.close()
+
+
+def write_flapjack_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_write = None):
+
+    xd = { '0':'REF','1':'ALT' }
+
+
+    if keys_to_write is None:
+        keys_to_write = vcf_data.keys()
+
+    keys_to_write.sort(key = lambda x: (x[0],int(x[1])))
+
+    if indiv_to_write is None:
+        indiv_to_write = set()
+        for k in keys_to_write:
+            v = vcf_data[k]
+            indiv_to_write = indiv_to_write.union(set(v['indiv_gt'].keys()))
+        indiv_to_write = sorted(list(indiv_to_write))
+
+    ofh = open(outfile,'w')
+
+    if len(set([c for c,p in keys_to_write])) == 1:
+        ofh.write('\t%s\n' % '\t'.join([p for c,p in keys_to_write]))
+    else:
+        #ofh.write('\t%s\n' % '\t'.join(['%s.%s' % (c,p) for c,p in keys_to_write]))
+        raise NotImplementedError, 'currently only supports single-chromosome output'
+
+    for ind in indiv_to_write:
+        ofh.write('%s' % ind)
+        for k in keys_to_write:
+            try:
+                gt = '/'.join([vcf_data[k][xd[i]] for i in vcf_data[k]['indiv_gt'][ind]['GT'].split('/')])
+            except:
+                gt = '?/?'
+            ofh.write('\t' + gt)
+        ofh.write('\n')
+
+    ofh.close()
+    
+    mapout = os.path.splitext(outfile)[0] + '.fj.map'
+    ofh = open(mapout,'w')
+    
+    for k in keys_to_write:
+        ofh.write('%s\t%s\t%s\n' % (k[1], 1, k[1]))
+
+    ofh.close()
+
+def write_peas_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_write = None):
+    '''given vcf_data per load_vcf above and an outfile name
+
+    writes peas input format'''
+
+    xd = { '0':'REF','1':'ALT' }
+
+    if keys_to_write is None:
+        keys_to_write = vcf_data.keys()
+
+    keys_to_write.sort(key = lambda x: (x[0],int(x[1])))
+
+    if indiv_to_write is None:
+        indiv_to_write = set()
+        for k in keys_to_write:
+            v = vcf_data[k]
+            indiv_to_write = indiv_to_write.union(set(v['indiv_gt'].keys()))
+        indiv_to_write = sorted(list(indiv_to_write))
+
+    ofh = open(outfile,'w')
+
+    ofh.write('SNPID\t%s\n' % '\t'.join('%s.%s' % (k[0],k[1]) for k in  keys_to_write))
+    ofh.write('Chrom\t%s\n' % '\t'.join([k[0] for k in keys_to_write]))
+    ofh.write('Position\t%s\n' % '\t'.join([k[1] for k in keys_to_write]))
+    ofh.write('AlleleState\t%s\n' % '\t'.join(['%s/%s' % (vcf_data[k]['REF'],vcf_data[k]['ALT']) for k in keys_to_write]))
+    ofh.write('Strand\t%s\n' % '\t'.join(['+'] * len(keys_to_write)))
+    
+    for ind in indiv_to_write:
+        ofh.write('%s' % ind)
+        for k in keys_to_write:
+            try:
+                gt = ''.join([vcf_data[k][xd[i]] for i in vcf_data[k]['indiv_gt'][ind]['GT'].split('/')])
+            except:
+                gt = '??'
+            ofh.write('\t' + gt)
+        ofh.write('\n')
+
+    ofh.close()
+
+def write_bimbam_genotypes(vcf_data, outfile, keys_to_write = None, indiv_to_write = None):
+    '''does not suppport phased or multiple chromosome input vcfs
+    '''
+
+    xd = { '0':'REF','1':'ALT' }
+
+
+    if keys_to_write is None:
+        keys_to_write = vcf_data.keys()
+
+    keys_to_write.sort(key = lambda x: (x[0],int(x[1])))
+
+    if indiv_to_write is None:
+        indiv_to_write = set()
+        for k in keys_to_write:
+            v = vcf_data[k]
+            indiv_to_write = indiv_to_write.union(set(v['indiv_gt'].keys()))
+        indiv_to_write = sorted(list(indiv_to_write))
+
+    ofh = open(outfile,'w')
+
+    if len(set([c for c,p in keys_to_write])) == 1:
+        ofh.write('%s\n%s\n' % (len(indiv_to_write),len(keys_to_write)))
+        ofh.write('IND,%s\n' % ','.join([ind for ind in indiv_to_write]))
+    else:
+        #ofh.write('\t%s\n' % '\t'.join(['%s.%s' % (c,p) for c,p in keys_to_write]))
+        raise NotImplementedError, 'currently only supports single-chromosome output'
+
+    for k in keys_to_write:
+        ofh.write('%s' % k[1])
+        for ind in indiv_to_write:
+            try:
+                gt = ''.join([vcf_data[k][xd[i]] for i in vcf_data[k]['indiv_gt'][ind]['GT'].split('/')])
+            except:
+                gt = '??'
+            ofh.write(',' + gt)
+        ofh.write('\n')
+
+    ofh.close()
+    
+    mapout = os.path.splitext(outfile)[0] + '.bb.map.txt'
+    ofh = open(mapout,'w')
+    
+    for k in keys_to_write:
+        ofh.write('%s,%s\n' % (k[1], k[1]))
+
+    ofh.close()
+
+def write_fastPHASE_genotypes(vcf_data,outbase, keys_to_write = None, indiv_to_write = None):
+    '''
+    given vcf per load_vcf, writes one output file PER CHROM, name as:
+    <outbase>_<CHROM>.inp
+
+    it is recommended that outbase include path information to a directory in which these will be written, i.e.:
+
+    outbase="beachmouse_fastPHASE/beaches_l55_k4_QD8_GQ12"
+
+    will produce files:
+
+    beachmouse_fastPHASE/beaches_l55_k4_QD8_GQ12_agouti_bac.inp
+    beachmouse_fastPHASE/beaches_l55_k4_QD8_GQ12_mc1r_bac.inp
+    ...etc
+    
+    directories will be created as necessary.
+    '''
+
+    
+    xd = { '0':'REF','1':'ALT' }
+
+
+    if keys_to_write is None:
+        keys_to_write = vcf_data.keys()
+
+    keys_to_write.sort(key = lambda x: (x[0],int(x[1])))
+
+    if indiv_to_write is None:
+        indiv_to_write = set()
+        for k in keys_to_write:
+            v = vcf_data[k]
+            indiv_to_write = indiv_to_write.union(set(v['indiv_gt'].keys()))
+        indiv_to_write = sorted(list(indiv_to_write))
+
+    outroot = os.path.dirname(outbase)
+
+    try:
+        os.makedirs(outroot)
+    except:
+        pass
+
+
+    this_chrom = None
+    this_len = 0
+    poslist = []
+    for k in keys_to_write:
+        if k[0] != this_chrom:
+            if this_chrom is not None:
+                outfile = '%s_%s.inp' % (outbase,this_chrom)
+                posfile = '%s_%s.pos' % (outbase,this_chrom)
+                open(posfile,'w').write(('\t'.join(poslist)) + '\n')
+                ofh = open(outfile,'w')
+                ofh.write('%s\n%s\n' % (len(indiv_to_write), this_len))
+                for ind in indiv_to_write:
+                    ofh.write('# %s\n' % ind)
+                    ofh.write('%s\n%s\n' % tuple([''.join(li) for li in Util.dezip(chrom_data[ind])]))
+                ofh.close()
+            chrom_data = defaultdict(list)
+            this_chrom = k[0]
+            this_len = 0
+            poslist = []
+        for ind in indiv_to_write:
+            try:
+                chrom_data[ind].append(vcf_data[k]['indiv_gt'][ind]['GT'].split('/'))
+            except:
+                chrom_data[ind].append(['?','?'])
+        this_len += 1
+        poslist.append(k[1])
+
+    #flush:
+    outfile = '%s_%s.inp' % (outbase,this_chrom)
+    posfile = '%s_%s.pos' % (outbase,this_chrom)
+    open(posfile,'w').write(('\t'.join(poslist)) + '\n')
+    ofh = open(outfile,'w')
+    ofh.write('%s\n%s\n' % (len(indiv_to_write), this_len))
+    for ind in indiv_to_write:
+        ofh.write('# %s\n' % ind)
+        ofh.write('%s\n%s\n' % tuple([''.join(li) for li in Util.dezip(chrom_data[ind])]))
+    ofh.close()
+
+
 
 if __name__ == "__main__":
 

@@ -7,7 +7,11 @@ ALL SEQUENCE HEADERS MUST BEGIN WITH A UNIQUE INTEGER ID FOLLOWED BY A PERIOD
 
 '''
 
+<<<<<<< HEAD
 import os, sys, re, gzip
+=======
+import os, sys, re, numpy
+>>>>>>> 9746a9d04d8803a838c0229517a1dacbdb12cb1b
 from config import SCRATCH as scratch
 
 fail_to_local = False #must set to "True" to allow use of working directory for blat output
@@ -35,7 +39,11 @@ def space_free_on_volume(vol,unit='M',verbose=False):
     from subprocess import Popen,PIPE
     if verbose:
         print >> sys.stderr, 'checking free space on volume %s ...' % vol,
-    free = int(Popen('df -P --sync -B %s %s' % (unit,vol), shell=True, stdout=PIPE).stdout.readlines()[-1].strip().split()[3].rstrip(unit))
+    try:
+        free = int(Popen('df -P --sync -B %s %s' % (unit,vol), shell=True, stdout=PIPE).stdout.readlines()[-1].strip().split()[3].rstrip(unit))
+    except:
+        print >> sys.stderr, 'free space check failed; proceeding.  MONITOR AVAILABLE SPACE ON %s' % vol
+        free = numpy.inf
     if verbose:
         print >> sys.stderr, '%s %sB' % (free,unit)
     return free
