@@ -52,7 +52,7 @@ def cat(filelist,targetfile):
             fh.write(l)
     fh.close()
 
-def load_uniqued(all_quality,uniqued,readlen=None,nticks=20,baseQ=None):
+def load_uniqued(all_quality,uniqued,readlen=None,nticks=20,baseQ=None,count_by_ind=False):
     '''given a .uniqued file produced by preprocess_radtag_lane.py
 
     loads data into all_quality, ensuring sequences remain unique
@@ -82,12 +82,15 @@ def load_uniqued(all_quality,uniqued,readlen=None,nticks=20,baseQ=None):
         if i % tickon == 0: print >> sys.stderr, '\t\t%s / %s (%d%%)' % (i,nreads,(float(i)/nreads)*100)
 
         try:
-            s,c,qstr,indiv,indcnt,r2,r2cnt = line.strip().split()
+            s,c,qstr,indivstr,indcnt,r2,r2cnt = line.strip().split()
         except ValueError:
             print >> sys.stderr, 'line %s split: incorrect element number (%s) line:\n%ssplit:\n%s\n' % (i,len(line.strip().split()),line,line.strip().split())
         q = numpy.array([ord(ch)-baseQ for ch in qstr])
         c = int(c)
-        indiv = set(indiv.split(','))
+        indiv = set(indivstr.split(','))
+
+        if count_by_ind:
+            indcntd = dict(zip(indivstr.split(','),map(int,indcnt.split(','))))
 
         if readlen is not None:
             s = s[:readlen]
@@ -97,10 +100,19 @@ def load_uniqued(all_quality,uniqued,readlen=None,nticks=20,baseQ=None):
             all_quality[s]['mIDs'] = list(set(all_quality[s]['mIDs']).union(indiv))
             all_quality[s]['sum_quality'] += q*c
             all_quality[s]['tot'] += c
+            if count_by_ind:
+                for ind,cnt in indcntd.items():
+                    if all_quality[s]['count_by_ind'].has_key(ind):
+                        all_quality[s]['count_by_ind'][ind] += cnt
+                    else:
+                        all_quality[s]['count_by_ind'][ind] = cnt
         else:
             all_quality[s]['mIDs'] = list(indiv)
             all_quality[s]['sum_quality'] = q*c
             all_quality[s]['tot'] = c
+            if count_by_ind:
+                all_quality[s]['count_by_ind'] = indcntd
+
 
 def preprocess_sequence_for_match(all_quality, cutsite, mIDfile, subjects, queries, minlen=20):
     '''given a quality dictionary
