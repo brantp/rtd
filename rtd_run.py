@@ -42,6 +42,8 @@ from copy import deepcopy
 import os, sys, re, numpy, gzip
 import gdata.spreadsheet.service
 
+import run_safe
+
 def cat(filelist,targetfile):
     '''cats an arbitrarily large filelist to targetfile'''
     fh = smartopen(targetfile,'w')

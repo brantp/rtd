@@ -7,14 +7,12 @@ ALL SEQUENCE HEADERS MUST BEGIN WITH A UNIQUE INTEGER ID FOLLOWED BY A PERIOD
 
 '''
 
-<<<<<<< HEAD
-import os, sys, re, gzip
-=======
-import os, sys, re, numpy
->>>>>>> 9746a9d04d8803a838c0229517a1dacbdb12cb1b
+import os, sys, re, gzip, numpy
+
+
 from config import SCRATCH as scratch
 
-fail_to_local = False #must set to "True" to allow use of working directory for blat output
+fail_to_local = True #must set to "True" to allow use of working directory for blat output
                       #note that this can result in large .blat files on shared volumes!
 keep_blat = False
 pct_id_cut = 0.8
