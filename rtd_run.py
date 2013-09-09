@@ -171,7 +171,7 @@ def preprocess_sequence_for_match(all_quality, cutsite, mIDfile, subjects, queri
         qsum = all_quality[s]['sum_quality']
         q = qsum / c
 
-        if len(queries) > 1 and i%break_at==0 and len(qcopy) > 0: #move to the next query chunk
+        if len(queries) > 1 and break_at and i%break_at==0 and len(qcopy) > 0: #move to the next query chunk
             if this_outfile:
                 gen_queries.append(this_outfile)
                 this_query_fh.close()
@@ -179,7 +179,7 @@ def preprocess_sequence_for_match(all_quality, cutsite, mIDfile, subjects, queri
             print >> sys.stderr, i,this_outfile
             this_query_fh = smartopen(this_outfile,'w')
 
-        if len(subjects) > 1 and i%subj_break_at==0 and len(scopy) > 0: #move to the next query chunk
+        if len(subjects) > 1 and subj_break_at and i%subj_break_at==0 and len(scopy) > 0: #move to the next subject chunk
             if this_subj_outfile:
                 gen_subjects.append(this_subj_outfile)
                 this_subj_fh.close()
@@ -533,7 +533,8 @@ if __name__ == '__main__':
                 print >> sys.stderr, 'Write matrix for clustering'
                 
                 # BACK TO CONCAT LABELS # no longer using concatenated label file
-                ret = os.system('mcxload -abc %s -o %s -write-tab %s' % (labelfile,matfile,tabfile))                
+                cmd = 'zcat %s | mcxload -abc - -o %s -write-tab %s' % (labelfile,matfile,tabfile)
+                ret = os.system(cmd)
 
                 # BACK TO CONCAT LABELS 20120103
                 #mcxload_ps = Popen('mcxload -abc - -o %s -write-tab %s' % (matfile,tabfile),shell=True,bufsize=1,stdin=PIPE)

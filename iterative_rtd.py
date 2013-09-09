@@ -9,6 +9,7 @@ from subprocess import Popen,PIPE
 from preprocess_radtag_lane import smartopen,get_read_count
 from rtd_run import load_uniqued
 from collections import defaultdict
+from glob import glob
 
 def remove_ext(fname,psplit=False):
     if fname.endswith('.gz'):
@@ -40,7 +41,7 @@ def make_stampy_ref_idx(reference, force_index=False):
     if all([os.path.exists(f) for f in refidxs]) and not force_index:
         print >> sys.stderr, 'all stampy reference index files exist (%s)' % refidxs
     else:
-        ret = os.system('stampy.py -G %s %s; stampy.py -g %s -H %s' % tuple([reference]*4))
+        ret = os.system('stampy.py --overwrite -G %s %s; stampy.py --overwrite -g %s -H %s' % tuple([reference]*4))
         if ret == 0 and all([os.path.exists(f) for f in refidxs]):
             print >> sys.stderr, 'all stampy reference index files created (%s)' % refidxs
         else:
@@ -65,7 +66,7 @@ def map_by_bwa(reads,reference,mapped,bwa_args='',make_index=True,force_index=Fa
 
 def map_by_stampy(reads,reference,mapped,stampy_args='--maxbasequal=60 --bwamark',make_index=True,force_index=False):
     if make_index: make_stampy_ref_idx(reference,force_index=force_index)
-    cmd = 'stampy.py %s -h %s -g %s -M %s -o %s.sam; samtools view -bS %s.sam > %s.bam' % (stampy_args,reference,reference, reads, mapped,mapped,mapped)
+    cmd = 'stampy.py --overwrite %s -h %s -g %s -M %s -o %s.sam; samtools view -bS %s.sam > %s.bam' % (stampy_args,reference,reference, reads, mapped,mapped,mapped)
     ss = run_safe.safe_script(cmd,mapped,force_write=True)
     ret = os.system(ss)
     if ret == 0 and os.path.exists(mapped+'.bam'):
@@ -175,4 +176,73 @@ def filter_uniqued(uniqued,outfile,lines_to_write):
         if i in lines_to_write:
             ofh.write(l)
     ofh.close()
+
+def append_to_ref(target_ref,new_ref,id_prefix):
+    nfh = smartopen(new_ref)
+    tfh = smartopen(target_ref,'a')
+    for l in nfh:
+        if l.startswith('>'):
+            newl = l.replace('>','>%s_' % id_prefix)
+            tfh.write(newl)
+        else:
+            tfh.write(l)
+    nfh.close()
+    tfh.close()
+
+def ref_len(ref):
+    return int(Popen('grep ">" %s | wc -l' % ref, shell=True,stdout=PIPE).stdout.read())
+
+if __name__ == "__main__":
+    #options, someday
+    contam_fa = sys.argv[1]
+    outdir = sys.argv[2]
+    uniqueds = sys.argv[3:]
+
+    bysize_dir = os.path.join(outdir,'by_size/uni_len')
+    denovo_ref = os.path.join(outdir,'denovo.fa')
+
+    if os.path.exists(denovo_ref):
+        print >> sys.stderr, 'REMOVE REF: %s' % denovo_ref
+        os.unlink(denovo_ref)
+
+    all_quality = defaultdict(dict)
+
+    for uniqued in uniqueds:
+        load_uniqued(all_quality,uniqued,count_by_ind=True)
+
+    print >> sys.stderr, 'LOAD COMPLETE. WRITE BY-SIZE.'
+    ofbysize = write_uniqued_by_size(all_quality,bysize_dir)
+    del all_quality
     
+    sizes = sorted(ofbysize.keys(),reverse=True)
+
+    for i in sizes:
+        print >> sys.stderr, '\nSTART %s' % i
+        uni = ofbysize[i]
+
+        ufq = uniqued_to_fastq(uni)
+        nreads = get_read_count(ufq)
+
+        if os.path.exists(denovo_ref):
+            dn_len = ref_len(denovo_ref)
+            noncontam_ubam = subtractive_map(ufq,contam_fa,stampy=False,readnames_only=False)
+            unmapped = subtractive_map(noncontam_ubam,denovo_ref,force_index=True)
+        else:
+            dn_len = 0
+            unmapped = subtractive_map(ufq,contam_fa,stampy=False)
+
+        print >> sys.stderr, '\nGET %s UNMAPPED' % len(unmapped)
+        funi = os.path.splitext(uni)[0]+'.filtered.gz'
+        filter_uniqued(uni,funi,map(int,unmapped))
+
+        outdir = os.path.splitext(uni)[0]+'-rtd'
+        print >> sys.stderr, '\nRTD'
+        cmd = "rtd_run.py -pe parallel -np 8 -nc 8 -s CATG -cd 1 -mi 1 --cleanup -te 8 %s %s" % (outdir,funi)
+        ret = os.system(cmd)
+        if ret != 0:
+            raise OSError
+        refadd = glob(outdir+'/*.fa')[0]
+        
+        append_to_ref(denovo_ref,refadd,i)
+        add_len = ref_len(refadd)
+        print >> sys.stderr, '\tITERATION %s ADDS %s to DENOVO REF LEN %s\n' % (i,add_len,dn_len)
