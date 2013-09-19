@@ -96,6 +96,87 @@ def get_baseQ(qstr):
     else:
         return None
 
+def fq_path_from_db_dict(db_dict,index_lookup='DB_multiplex_indices'):
+    if type(index_lookup) == str:
+        index_lookup =  get_table_as_dict(index_lookup,suppress_fc_check=True)
+    idxlookup = dict([(d['idx'],d['seq']) for d in index_lookup])
+    idxnumlookup = dict([(d['seq'],d['idx']) for d in index_lookup])
+
+    cand = glob(db_dict['datapath']+'/*')
+    r1 = None
+    r2 = None
+    for c in cand:
+        if os.path.basename(c).startswith('Sample') and 'lane%s' % db_dict['lane'] in os.path.basename(c).lower() and os.path.basename(c).endswith('.R1.fastq.gz'):
+            if db_dict.has_key('index'):
+                if db_dict['index'].isdigit():
+                    alt_idx = idxlookup
+                    idx = db_dict['index']
+                else:
+                    if '-' in db_dict['index']:
+                        idx = db_dict['index'].split('-')[0]
+                    else:
+                        idx = db_dict['index']
+                    alt_idx = idxnumlookup
+                if os.path.basename(c).endswith('%s.R1.fastq.gz' % idx) or os.path.basename(c).endswith('%s.R1.fastq.gz' % alt_idx[idx]):
+                    r1 = c
+                    if os.path.exists(c.replace('.R1.','.R2.')):
+                        r2 = c.replace('.R1.','.R2.')
+                    break
+            else:
+                if os.path.basename(c).endswith('None.R1.fastq.gz') or os.path.basename(c).endswith('noidx.R1.fastq.gz'):
+                    r1 = c
+                    if os.path.exists(c.replace('.R1.','.R2.')):
+                        r2 = c.replace('.R1.','.R2.')
+                    break
+        if os.path.basename(c).startswith('s_%s_1_sequence' % db_dict['lane']) and os.path.basename(c).endswith('.txt.gz'):
+            if db_dict.has_key('index'):
+                if db_dict['index'].isdigit():
+                    alt_idx = idxlookup
+                    idx = db_dict['index']
+                else:
+                    if '-' in db_dict['index']:
+                        idx = db_dict['index'].split('-')[0]
+                    else:
+                        idx = db_dict['index']
+                    alt_idx = idxnumlookup
+                if os.path.basename(c).endswith('index%s.txt.gz' % idx) or os.path.basename(c).endswith('index%s.txt.gz' % alt_idx[idx]):
+                    r1 = c
+                    if os.path.exists(c.replace('_1_sequence','_2_sequence')):
+                        r2 = c.replace('_1_sequence','_2_sequence')
+                    break
+            else:
+                r1 = c
+                if os.path.exists(c.replace('_1_sequence','_2_sequence')):
+                    r2 = c.replace('_1_sequence','_2_sequence')
+                break
+    
+    return r1,r2
+
+def get_legacy_to_DB_lookup(table_dict,mouseDB = 'Hoekstra lab mouse database',mouse_sheet='Mice',prefix_for_missing='BC',remove_suffixes=['_pilot']):
+    db_td = get_table_as_dict(mouseDB,target_worksheet=mouse_sheet,suppress_fc_check=True)
+    failures = []
+    transtable = {}
+    for sid in set([d['sampleid'] for d in table_dict if d['idtype'] == 'legacy' and not d.has_key('altid')] + [d['altid'] for d in table_dict if d.has_key('altid') and d['altidtype'] == 'legacy']): #ADD ALTID TO SET
+        for suff in remove_suffixes:
+            if sid.endswith(suff):
+                oldsid=sid
+                sid = sid[:-len(suff)]
+                print >> sys.stderr, 'found suffix %s in %s; now %s' % (suff,oldsid,sid)
+                break
+        legid = sid
+        candidate_records = [rec for rec in db_td if rec.get('legacyaka','') == legid]
+        if len(candidate_records) != 1 and sid[0].isdigit():
+            legid = prefix_for_missing + sid
+            candidate_records = [rec for rec in db_td if rec.get('legacyaka','') == legid]
+        if len(candidate_records) == 1:
+            transtable[sid] = candidate_records[0]['id']
+        else:
+            #print legid,candidate_records
+            failures.append((sid,candidate_records))
+
+    return transtable,failures
+                                                                           
+
 def create_empty_table(table_name):
     try:
         key, gd_client = get_spreadsheet_key(table_name)
