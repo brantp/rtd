@@ -255,6 +255,15 @@ def get_table_as_dict(target_sheet,sq=None,gd_client=None,suppress_fc_check=Fals
 
     return recs
 
+def no_net_get_table_as_dict(target_sheet,host='heroint4'):
+    print >> sys.stderr, 'retrieve %s via %s ...' % (target_sheet,host),
+    from subprocess import Popen,PIPE
+    cmd = 'ssh %s "python -c \\"from rtd.preprocess_radtag_lane import get_table_as_dict; td=get_table_as_dict(\'%s\',suppress_fc_check=True); print td.__repr__()\\"" 2> /dev/null | tail -n 1' % (host,target_sheet)
+    td_str = Popen(cmd,shell=True,stdout=PIPE).stdout.read()
+    td = eval(td_str)
+    print >> sys.stderr, '%s records' % len(td)
+    return td
+
 def get_adapter_index_lookup(verbose=True):
     '''returns dict of dicts:
     { <adaptersversion> : { <well> : <index_seq> } }
@@ -278,7 +287,7 @@ def get_adapter_index_lookup(verbose=True):
         print >> sys.stderr, 'loaded adapter lookup from %s lines in %s' % (len(d),ADAPTER_DATA) 
     return idxlookup
 
-def get_individual_data_for_lane(filename=None,idxlookup=None,fc=None,lane=None,index=None):
+def get_individual_data_for_lane(filename=None,idxlookup=None,fc=None,lane=None,index=None,transtable=None,get_transtable_from_mouseDB=False):
     '''given a fastq file, treats the directory immediately above as the flowcell ID, returns dict:
     { <sequence_index_tag> : **ROW_FROM_LIBRARY_DATA } 
     '''
@@ -355,9 +364,19 @@ def get_individual_data_for_lane(filename=None,idxlookup=None,fc=None,lane=None,
     if len(set(wells)) != len(wells):
         raise ValueError, '%s wells, %s unique' % (len(wells),len(set(wells)))
 
+    if transtable is None and get_transtable_from_mouseDB:
+        transtable,failures = get_legacy_to_DB_lookup(recs)
+
     indiv_data = {}
     for r in recs:
-        indiv_data[idxlookup[r['adaptersversion']][r['adapter']]] = r
+        if transtable is not None:
+            if transtable.has_key(r['sampleid']):
+                r['sampleid'] = transtable[r['sampleid']]
+                indiv_data[idxlookup[r['adaptersversion']][r['adapter']]] = r
+            else:
+                print >> sys.stderr, '%s missing from transtable; check database lookup' % r['sampleid']
+        else:
+            indiv_data[idxlookup[r['adaptersversion']][r['adapter']]] = r
 
     return indiv_data
 
@@ -662,9 +681,11 @@ if __name__ == '__main__':
     parser.add_argument('-ol','--output_lnum',default='4',choices=['1','4'],type=int,help='number of lines per record in fastq output if -w is specified (either older 1-line, or newer 4-line)'+ds)
     parser.add_argument('-fc','--flowcell',default=None,type=str,help='flowcell name (if None, derive from sequence infile path)'+ds)
     parser.add_argument('-l','--lane',default=None,type=str,help='lane (if None, derive from sequence infile name)'+ds)
-    parser.add_argument('-idx','--index',default=None,type=str,help='multiplex index (if None, derive from sequence infile name)'+ds)
+    parser.add_argument('-idx','--index',default=None,type=str,help='multiplex index (if None, no index applied)'+ds)
 
     parser.add_argument('-suf','--suffix',default=None,type=str,help='suffix for .uniqued file (permits processing split files)'+ds)
+
+    parser.add_argument('--force_db_id',action='store_true',help='force mouse database ids for individuals \n(replacing legacy sampleid from DB_library_data)'+ds)
 
     parser.add_argument('-e','--estimate_error',action='store_true',help='invokes clustering to estimate error rate after completion of preprocessing'+ds)
     parser.add_argument('-ee','--est_err_engine',default='local',choices=['local','parallel','lsf'],help='use this engine for parallelizing error estimate (rtd_run -pe argument)'+ds)
@@ -733,15 +754,12 @@ if __name__ == '__main__':
     nreads = get_read_count(r1,lnum)
 
     #index info append
-    if opts.index is not None:
-        index = opts.index
-        idxstr = '_index%s' % index
-    elif 'index' in os.path.basename(r1):
-        index = os.path.basename(r1).split('index')[-1].split('.')[0]
-        idxstr = '_index%s' % index
-    else:
+    if opts.index is None or opts.index == 'None':
         index = None
         idxstr = ''
+    else:
+        index = opts.index
+        idxstr = '_index%s' % index
 
     if opts.suffix is not None:
         idxstr = idxstr+'_'+opts.suffix
@@ -751,7 +769,7 @@ if __name__ == '__main__':
         if nreads != nreads2:
             raise ValueError, '%s read count: %s; %s read count: %s' % (r1, nreads, r2, nreads2)
 
-    indiv_data = get_individual_data_for_lane(idxlookup=idxlookup,fc=fc,lane=lane,index=index)
+    indiv_data = get_individual_data_for_lane(idxlookup=idxlookup,fc=fc,lane=lane,index=index,get_transtable_from_mouseDB=opts.force_db_id)
 
     adaptersversions = set([r['adaptersversion'] for r in indiv_data.values()])
     idxs = reduce(lambda x,y: x+y, [idxlookup[adver].values() for adver in adaptersversions])    

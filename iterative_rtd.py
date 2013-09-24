@@ -3,7 +3,7 @@
 iterative mapping-assembly by rtd over fragment size
 '''
 
-import os,sys
+import os,sys,re
 import run_safe
 from subprocess import Popen,PIPE
 from preprocess_radtag_lane import smartopen,get_read_count
@@ -170,6 +170,14 @@ def write_uniqued_by_size(all_quality,outbase,baseQ=33):
 
     return ofbysize
 
+def get_uniqued_by_size(outbase):
+    ofbysize = {}
+    unis = glob(outbase+'-*.uniqued.gz')
+    for u in unis:
+        size = re.search('-(\d+)\.uniqued\.gz',u).groups()[0]
+        ofbysize[int(size)] = u
+    return ofbysize
+
 def filter_uniqued(uniqued,outfile,lines_to_write):
     ofh = smartopen(outfile,'w')
     for i,l in enumerate(smartopen(uniqued)):
@@ -199,20 +207,25 @@ if __name__ == "__main__":
     uniqueds = sys.argv[3:]
 
     bysize_dir = os.path.join(outdir,'by_size/uni_len')
+    bysize_done = os.path.join(outdir,'by_size.done')
     denovo_ref = os.path.join(outdir,'denovo.fa')
 
     if os.path.exists(denovo_ref):
         print >> sys.stderr, 'REMOVE REF: %s' % denovo_ref
         os.unlink(denovo_ref)
 
-    all_quality = defaultdict(dict)
-
-    for uniqued in uniqueds:
-        load_uniqued(all_quality,uniqued,count_by_ind=True)
-
-    print >> sys.stderr, 'LOAD COMPLETE. WRITE BY-SIZE.'
-    ofbysize = write_uniqued_by_size(all_quality,bysize_dir)
-    del all_quality
+    if os.path.exists(bysize_done):
+        ofbysize = get_uniqued_by_size(bysize_dir)
+    else:
+        all_quality = defaultdict(dict)
+        
+        for uniqued in uniqueds:
+            load_uniqued(all_quality,uniqued,count_by_ind=True)
+            
+        print >> sys.stderr, 'LOAD COMPLETE. WRITE BY-SIZE.'
+        ofbysize = write_uniqued_by_size(all_quality,bysize_dir)
+        del all_quality
+        ret = os.system('touch %s' % bysize_done) 
     
     sizes = sorted(ofbysize.keys(),reverse=True)
 
@@ -240,7 +253,7 @@ if __name__ == "__main__":
         cmd = "rtd_run.py -pe parallel -np 8 -nc 8 -s CATG -cd 1 -mi 1 --cleanup -te 8 %s %s" % (outdir,funi)
         ret = os.system(cmd)
         if ret != 0:
-            raise OSError
+            raise OSError,cmd
         refadd = glob(outdir+'/*.fa')[0]
         
         append_to_ref(denovo_ref,refadd,i)
