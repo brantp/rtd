@@ -15,9 +15,9 @@ def get_adaptseq(table='DB_adapt_trim_seqs'):
 
 def get_adapterstype(flowcell,lane,index,table='DB_library_data'):
     if index:
-        td = preprocess_radtag_lane.get_table_as_dict(table,sq='flowcell="%s" and lane="%s" and index="%s"' % (flowcell,lane,index))
+        td = [d for d in preprocess_radtag_lane.get_table_as_dict(table) if d.get('flowcell','') == flowcell and d.get('lane','') == lane and d.get('index','') == index]
     else:
-        td = preprocess_radtag_lane.get_table_as_dict(table,sq='flowcell="%s" and lane="%s"' % (flowcell,lane))
+        td = [d for d in preprocess_radtag_lane.get_table_as_dict(table) if d.get('flowcell','') == flowcell and d.get('lane','') == lane]
     adapterstypes = list(set([d.get('adapterstype','') for d in td]))
     if len(adapterstypes) == 1:
         return adapterstypes[0]

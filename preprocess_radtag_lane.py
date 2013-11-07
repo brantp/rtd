@@ -153,7 +153,8 @@ def fq_path_from_db_dict(db_dict,index_lookup='DB_multiplex_indices'):
     return r1,r2
 
 def get_legacy_to_DB_lookup(table_dict,mouseDB = 'Hoekstra lab mouse database',mouse_sheet='Mice',prefix_for_missing='BC',remove_suffixes=['_pilot']):
-    db_td = get_table_as_dict(mouseDB,target_worksheet=mouse_sheet,suppress_fc_check=True)
+    #db_td = get_table_as_dict(mouseDB,target_worksheet=mouse_sheet,suppress_fc_check=True)
+    db_td = no_net_get_table_as_dict(mouseDB)
     failures = []
     transtable = {}
     for sid in set([d['sampleid'] for d in table_dict if d['idtype'] == 'legacy' and not d.has_key('altid')] + [d['altid'] for d in table_dict if d.has_key('altid') and d['altidtype'] == 'legacy']): #ADD ALTID TO SET
@@ -255,11 +256,14 @@ def get_table_as_dict(target_sheet,sq=None,gd_client=None,suppress_fc_check=Fals
 
     return recs
 
-def no_net_get_table_as_dict(target_sheet,host='heroint4'):
+def no_net_get_table_as_dict(target_sheet,host='heroint1'):
     print >> sys.stderr, 'retrieve %s via %s ...' % (target_sheet,host),
     from subprocess import Popen,PIPE
     cmd = 'ssh %s "python -c \\"from rtd.preprocess_radtag_lane import get_table_as_dict; td=get_table_as_dict(\'%s\',suppress_fc_check=True); print td.__repr__()\\"" 2> /dev/null | tail -n 1' % (host,target_sheet)
+    #cmd = 'ssh %s "python -c \\"from rtd.preprocess_radtag_lane import get_table_as_dict; td=get_table_as_dict(\'%s\',suppress_fc_check=True); print td.__repr__()\\"" 2> /dev/null' % (host,target_sheet)
+    #return cmd
     td_str = Popen(cmd,shell=True,stdout=PIPE).stdout.read()
+    #return td_str
     td = eval(td_str)
     print >> sys.stderr, '%s records' % len(td)
     return td
