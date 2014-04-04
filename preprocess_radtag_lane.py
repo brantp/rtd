@@ -224,6 +224,14 @@ def get_all_worksheet_names(sheet_key,gd_client):
 
 def get_table_as_dict(target_sheet,sq=None,gd_client=None,suppress_fc_check=False,target_worksheet=None):
     key,gd_client = get_spreadsheet_key(target_sheet,gd_client)
+    if sq is not None:
+        filter_el = sq.split(' and ')
+        filter_pairs = [s.replace('"','').split('=') for s in filter_el]
+        filter_fn_str = r'lambda d: all([d.get(k,"") == v for k,v in %s])' % filter_pairs
+        print >> sys.stderr, 'structured queries no longer work (thanks google!)\n' +\
+              'replaced by list filter:\n%s' % filter_fn_str
+        filter_fn = eval(filter_fn_str)
+
     if target_worksheet is None:
         names = get_all_worksheet_names(key,gd_client)[0]
         recs = []
@@ -233,12 +241,14 @@ def get_table_as_dict(target_sheet,sq=None,gd_client=None,suppress_fc_check=Fals
         return recs
     else:
         wskey,gd_client = get_worksheet_key(target_worksheet,key,gd_client)
-    if sq is not None:
-        q = gdata.spreadsheet.service.ListQuery()
-        q.sq = sq
-        feed = gd_client.GetListFeed(key,wskey,query=q)
-    else:
-        feed = gd_client.GetListFeed(key,wskey)
+    #if sq is not None:
+    #    q = gdata.spreadsheet.service.ListQuery()
+    #    q.sq = sq
+    #    feed = gd_client.GetListFeed(key,wskey,query=q)
+    #else:
+    #    feed = gd_client.GetListFeed(key,wskey)
+    feed = gd_client.GetListFeed(key,wskey)
+    
     recs = []
     for entry in feed.entry:
         #d = []
@@ -247,16 +257,20 @@ def get_table_as_dict(target_sheet,sq=None,gd_client=None,suppress_fc_check=Fals
         try:
 	    #recs.append(dict(re.findall('([\d\w_-]+?):\s(.+?)(?:(?:,\s)|$)',entry.content.text)))
             l = [m.strip(' ,:') for m in re.split('([^\s]+?:\s)',entry.content.text) if m]
-            recs.append(dict(zip(l[::2],l[1::2])))
+            d = dict(zip(l[::2],l[1::2]))
+            recs.append(d)
 	    if not suppress_fc_check and not all([k in recs[-1].keys() for k in ['flowcell','lane','pool']]):
 	        print >> sys.stderr, 'missing keys:', dict(re.findall('(.+?):\s(.+?)(?:(?:,\s)|$)',entry.content.text))
 	        print >> sys.stderr, 'line was:\n',entry.content.text
 	except:
 	    print >> sys.stderr, 'invalid:', entry.content.text#.split(',')
-
+    if sq is not None:
+        print >> sys.stderr, 'loaded %s records' % len(recs)
+        recs = filter(filter_fn,recs)
+        print >> sys.stderr, 'return %s records' % len(recs)
     return recs
 
-def no_net_get_table_as_dict(target_sheet,host='heroint1'):
+def no_net_get_table_as_dict(target_sheet,host='heroint3'):
     print >> sys.stderr, 'retrieve %s via %s ...' % (target_sheet,host),
     from subprocess import Popen,PIPE
     cmd = 'ssh %s "python -c \\"from rtd.preprocess_radtag_lane import get_table_as_dict; td=get_table_as_dict(\'%s\',suppress_fc_check=True); print td.__repr__()\\"" 2> /dev/null | tail -n 1' % (host,target_sheet)
@@ -343,6 +357,8 @@ def get_individual_data_for_lane(filename=None,idxlookup=None,fc=None,lane=None,
     #try with table_as_dict
     recs = get_table_as_dict(LIBRARY_DATA,sq=sq)
 
+    if len(recs) == 0:
+        raise ValueError, 'no records returned'
     print >> sys.stderr, "%s records found for %s" % (len(recs), sq)
     adaptersversions = set([r['adaptersversion'] for r in recs])
     print >> sys.stderr, "adapters used: %s" % adaptersversions

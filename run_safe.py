@@ -9,6 +9,10 @@ def safe_script(cmd,donefile,donesuffix='.done',scriptfile=None,force_write=Fals
         #file present; use
         pass
     else:
+        try:
+            os.unlink(scriptfile)
+        except:
+            pass
         open(scriptfile,'w').write('#!/usr/bin/env sh\nset -e\n%s\n' % (cmd))
         ret = os.system('chmod +x %s' % scriptfile)
         if ret != 0:
