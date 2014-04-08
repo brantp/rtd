@@ -157,6 +157,10 @@ def get_legacy_to_DB_lookup(table_dict,mouseDB = 'Hoekstra lab mouse database',m
     db_td = no_net_get_table_as_dict(mouseDB)
     failures = []
     transtable = {}
+    #identity pass-through for "DB" records
+    for sid in set([d['sampleid'] for d in table_dict if d['idtype'] == 'DB']):
+        transtable[sid] = sid
+    #find translation for "legacy" records
     for sid in set([d['sampleid'] for d in table_dict if d['idtype'] == 'legacy' and not d.has_key('altid')] + [d['altid'] for d in table_dict if d.has_key('altid') and d['altidtype'] == 'legacy']): #ADD ALTID TO SET
         for suff in remove_suffixes:
             if sid.endswith(suff):
